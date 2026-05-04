@@ -10,7 +10,7 @@ SEND_MESSAGES = False       # ← warning ping on each message
 SEND_PERIODIC = True        # ← "LONG LIVE ISRAEL!!!" every 2-3s
 
 WARNING_PREFIX = "WE LOVE ISRAEL"
-PERIODIC_MESSAGE = "LONG LIVE ISRAEL!!!"
+PERIODIC_MESSAGE = "# LONG LIVE ISRAEL!!! 🇮🇱"
 
 EMOJI_POOL = [
     "😀","😁","😂","🤣","😃","😄","😅","😆","😇","😈",

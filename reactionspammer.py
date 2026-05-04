@@ -3,7 +3,7 @@ import asyncio
 import random
 import os
 
-TOKEN = os.environ.get("TOKEN", "MTQzOTkxOTEyNDc3NTE3ODM3Mg.GdGQ_R.oaUJ27nNtxL9ps3uMiY4qPj_votymvPVrS9DC4")
+TOKEN = os.environ.get("TOKEN", "MTQzOTkxOTEyNDc3NTE3ODM3Mg.GMdwSP.hYkdjFB-AtS98OMCwffRUMDMRo2SNtYkGLrKP0")
 CHANNEL_ID = 1467178448262008933
 REACT_TO_SELF = True
 SEND_MESSAGES = False       # ← warning ping on each message
@@ -94,8 +94,6 @@ async def on_message(message):
     is_self = message.author == client.user
 
     if is_self and message.content.startswith(WARNING_PREFIX):
-        return
-    if is_self and message.content == PERIODIC_MESSAGE:
         return
     if is_self and not REACT_TO_SELF:
         return

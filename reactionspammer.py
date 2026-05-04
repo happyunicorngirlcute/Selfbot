@@ -29,7 +29,7 @@ async def set_rpc():
     payload = {
         "op": 3,
         "d": {
-            "status": "online",
+            "status": "idle",
             "since": 0,
             "afk": False,
             "activities": [{

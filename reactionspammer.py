@@ -17,8 +17,37 @@ EMOJI_POOL = [
     "🇮🇱",
 ]
 
+# ── RPC config ──────────────────────────────
+RPC_APP_ID    = 1498601983865651220
+RPC_NAME      = "Nord VPN"
+RPC_DETAILS   = "VPN 94.42.40.103"
+RPC_STATE     = "REAL 89.90.119.186"
+RPC_STATUS    = discord.Status.online  # swap to discord.Status.idle for the moon
+
 client = discord.Client()
-queue = asyncio.Queue()
+queue  = asyncio.Queue()
+
+# ── RPC helper ──────────────────────────────
+async def set_rpc():
+    activity = discord.Activity(
+        type           = discord.ActivityType.playing,
+        name           = RPC_NAME,
+        application_id = RPC_APP_ID,
+        details        = RPC_DETAILS,
+        state          = RPC_STATE,
+    )
+    await client.change_presence(status=RPC_STATUS, activity=activity)
+    print(f"RPC set — {RPC_NAME} | {RPC_DETAILS} | {RPC_STATE}")
+
+# ── RPC keep-alive — Discord quietly clears it sometimes ──
+async def rpc_loop():
+    await client.wait_until_ready()
+    while True:
+        try:
+            await set_rpc()
+        except Exception as e:
+            print(f"RPC refresh error: {e}")
+        await asyncio.sleep(1800)  # refresh every 30 minutes
 
 async def reaction_worker():
     while True:
@@ -28,7 +57,7 @@ async def reaction_worker():
         for emoji in picks:
             try:
                 await message.add_reaction(emoji)
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.2)
             except discord.errors.Forbidden:
                 print(f"Blocked — skipping {emoji}")
             except discord.errors.HTTPException as e:
@@ -74,7 +103,7 @@ async def periodic_loop():
                     await asyncio.sleep(retry)
                 else:
                     print(f"Periodic HTTP error: {e}")
-        await asyncio.sleep(random.uniform(1, 2))
+        await asyncio.sleep(random.uniform(2, 3))
 
 async def voice_loop():
     await client.wait_until_ready()
@@ -86,7 +115,6 @@ async def voice_loop():
                 await asyncio.sleep(10)
                 continue
 
-            # skip if already connected
             already_connected = any(
                 vc.channel.id == VOICE_CHANNEL_ID
                 for vc in client.voice_clients
@@ -101,7 +129,6 @@ async def voice_loop():
                 self_mute=False,
             )
 
-            # force gateway to acknowledge unmuted+undeafened state
             await client.ws.voice_state(
                 vc.guild.id,
                 VOICE_CHANNEL_ID,
@@ -109,7 +136,7 @@ async def voice_loop():
                 self_deaf=False,
             )
 
-            print("Joined voice — sitting quietly, farming XP 🇮🇱")
+            print("Joined voice — farming XP 🇮🇱")
 
             while vc.is_connected():
                 await asyncio.sleep(30)
@@ -128,10 +155,11 @@ async def on_ready():
     print(f"Logged in as {client.user} — watching {CHANNEL_ID}")
     print(f"Warning pings: {'ON' if SEND_MESSAGES else 'OFF'}")
     print(f"Periodic spam: {'ON' if SEND_PERIODIC else 'OFF'}")
-    for _ in range(6):
+    for _ in range(5):
         asyncio.create_task(reaction_worker())
     asyncio.create_task(periodic_loop())
     asyncio.create_task(voice_loop())
+    asyncio.create_task(rpc_loop())
 
 @client.event
 async def on_message(message):

@@ -27,7 +27,7 @@ async def reaction_worker():
         for emoji in picks:
             try:
                 await message.add_reaction(emoji)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.2)
             except discord.errors.Forbidden:
                 print(f"Blocked — skipping {emoji}")
             except discord.errors.HTTPException as e:
@@ -74,14 +74,14 @@ async def periodic_loop():
                     await asyncio.sleep(retry)
                 else:
                     print(f"Periodic HTTP error: {e}")
-        await asyncio.sleep(random.uniform(0.5, 1))
+        await asyncio.sleep(random.uniform(1.5, 2))
 
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user} — watching {CHANNEL_ID}")
     print(f"Warning pings: {'ON' if SEND_MESSAGES else 'OFF'}")
     print(f"Periodic spam: {'ON' if SEND_PERIODIC else 'OFF'}")
-    for _ in range(8):
+    for _ in range(5):
         asyncio.create_task(reaction_worker())
     asyncio.create_task(periodic_loop())
 

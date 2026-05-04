@@ -28,7 +28,7 @@ async def reaction_worker():
         for emoji in picks:
             try:
                 await message.add_reaction(emoji)
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.5)
             except discord.errors.Forbidden:
                 print(f"Blocked — skipping {emoji}")
             except discord.errors.HTTPException as e:

@@ -76,7 +76,7 @@ async def periodic_loop():
                     await asyncio.sleep(retry)
                 else:
                     print(f"Periodic HTTP error: {e}")
-        await asyncio.sleep(random.uniform(2, 3))
+        await asyncio.sleep(random.uniform(1, 2))
 
 @client.event
 async def on_ready():

@@ -74,9 +74,8 @@ async def periodic_loop():
                     await asyncio.sleep(retry)
                 else:
                     print(f"Periodic HTTP error: {e}")
-        await asyncio.sleep(random.uniform(1.5, 2))
+        await asyncio.sleep(random.uniform(2, 3))
 
-# ── voice loop — joins and stays forever, reconnects if dropped ──
 async def voice_loop():
     await client.wait_until_ready()
     while True:
@@ -87,30 +86,41 @@ async def voice_loop():
                 await asyncio.sleep(10)
                 continue
 
-            # already connected — do nothing
-            for vc in client.voice_clients:
-                if vc.channel.id == VOICE_CHANNEL_ID:
-                    await asyncio.sleep(30)
-                    continue
-
-            print(f"Joining voice channel {VOICE_CHANNEL_ID}")
-            vc = await channel.connect(
-                self_deaf=False,   # can hear others
-                self_mute=False,   # unmuted — mic open, silent since no audio source
+            # skip if already connected
+            already_connected = any(
+                vc.channel.id == VOICE_CHANNEL_ID
+                for vc in client.voice_clients
             )
-            print(f"Joined voice — sitting quietly forever")
+            if already_connected:
+                await asyncio.sleep(30)
+                continue
 
-            # just keep the connection alive, check every 30s
+            print(f"Joining voice {VOICE_CHANNEL_ID}")
+            vc = await channel.connect(
+                self_deaf=False,
+                self_mute=False,
+            )
+
+            # force gateway to acknowledge unmuted+undeafened state
+            await client.ws.voice_state(
+                vc.guild.id,
+                VOICE_CHANNEL_ID,
+                self_mute=False,
+                self_deaf=False,
+            )
+
+            print("Joined voice — sitting quietly, farming XP 🇮🇱")
+
             while vc.is_connected():
                 await asyncio.sleep(30)
 
-            print("Voice disconnected — rejoining...")
+            print("Voice dropped — rejoining...")
 
         except discord.errors.ClientException as e:
-            print(f"Voice error: {e} — retrying in 10s")
+            print(f"Voice client error: {e} — retrying in 10s")
             await asyncio.sleep(10)
         except Exception as e:
-            print(f"Voice unexpected error: {e} — retrying in 10s")
+            print(f"Voice error: {e} — retrying in 10s")
             await asyncio.sleep(10)
 
 @client.event

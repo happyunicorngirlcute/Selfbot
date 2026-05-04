@@ -2,6 +2,7 @@ import discord
 import asyncio
 import random
 import os
+import time
 
 TOKEN = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID = 1467178448262008933
@@ -13,41 +14,47 @@ SEND_PERIODIC = True
 WARNING_PREFIX = "1"
 PERIODIC_MESSAGE = "# LONG LIVE ISRAEL. ISRAEL IS THE GREATEST COUNTRY THAT EVER EXISTED, BENYAMIN NETANYAHOU IS GOD! HE IS THE GREATEST LEADER TO EVER EXIST! ISRAEL BLESS ME WITH XP!!! XPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXP 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱"
 
-EMOJI_POOL = [
-    "🇮🇱",
-]
+EMOJI_POOL = ["🇮🇱"]
 
-# ── RPC config ──────────────────────────────
-RPC_APP_ID    = 1498601983865651220
-RPC_NAME      = "Nord VPN"
-RPC_DETAILS   = "VPN 94.42.40.103"
-RPC_STATE     = "REAL 89.90.119.186"
-RPC_STATUS    = discord.Status.online  # swap to discord.Status.idle for the moon
+RPC_APP_ID = "1498601983865651220"
+RPC_NAME   = "Nord VPN"
+RPC_DETAIL = "VPN 94.42.40.103"
+RPC_STATE  = "REAL 89.90.119.186"
 
 client = discord.Client()
 queue  = asyncio.Queue()
 
-# ── RPC helper ──────────────────────────────
+# ── raw gateway RPC — only way app_id actually sticks on selfbots ──
 async def set_rpc():
-    activity = discord.Activity(
-        type           = discord.ActivityType.playing,
-        name           = RPC_NAME,
-        application_id = RPC_APP_ID,
-        details        = RPC_DETAILS,
-        state          = RPC_STATE,
-    )
-    await client.change_presence(status=RPC_STATUS, activity=activity)
-    print(f"RPC set — {RPC_NAME} | {RPC_DETAILS} | {RPC_STATE}")
+    payload = {
+        "op": 3,
+        "d": {
+            "status": "online",
+            "since": 0,
+            "afk": False,
+            "activities": [{
+                "name":           RPC_NAME,
+                "type":           0,
+                "application_id": RPC_APP_ID,
+                "details":        RPC_DETAIL,
+                "state":          RPC_STATE,
+                "timestamps": {
+                    "start": int(time.time() * 1000)
+                }
+            }]
+        }
+    }
+    await client.ws.send_as_json(payload)
+    print(f"RPC pushed — {RPC_NAME} | {RPC_DETAIL} | {RPC_STATE}")
 
-# ── RPC keep-alive — Discord quietly clears it sometimes ──
 async def rpc_loop():
     await client.wait_until_ready()
     while True:
         try:
             await set_rpc()
         except Exception as e:
-            print(f"RPC refresh error: {e}")
-        await asyncio.sleep(1800)  # refresh every 30 minutes
+            print(f"RPC error: {e}")
+        await asyncio.sleep(1800)
 
 async def reaction_worker():
     while True:
@@ -73,8 +80,7 @@ async def reaction_worker():
                     print(f"HTTP error {emoji}: {e}")
 
         if SEND_MESSAGES:
-            cooldown = random.uniform(4, 5)
-            await asyncio.sleep(cooldown)
+            await asyncio.sleep(random.uniform(4, 5))
             try:
                 await message.channel.send(
                     f"WE LOVE ISRAEL! 🇮🇱 🇮🇱 🇮🇱 {message.author.mention}"
@@ -93,7 +99,7 @@ async def periodic_loop():
         if SEND_PERIODIC:
             try:
                 await channel.send(PERIODIC_MESSAGE)
-                print(f"Periodic sent")
+                print("Periodic sent")
             except discord.errors.Forbidden:
                 print("Periodic — no perms")
             except discord.errors.HTTPException as e:

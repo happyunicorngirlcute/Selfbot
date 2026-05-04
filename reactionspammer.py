@@ -5,6 +5,7 @@ import os
 
 TOKEN = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID = 1467178448262008933
+VOICE_CHANNEL_ID = 1467228900575678626
 REACT_TO_SELF = True
 SEND_MESSAGES = False
 SEND_PERIODIC = True
@@ -44,7 +45,6 @@ async def reaction_worker():
 
         if SEND_MESSAGES:
             cooldown = random.uniform(4, 5)
-            print(f"Cooling {cooldown:.2f}s before warning ping")
             await asyncio.sleep(cooldown)
             try:
                 await message.channel.send(
@@ -76,6 +76,43 @@ async def periodic_loop():
                     print(f"Periodic HTTP error: {e}")
         await asyncio.sleep(random.uniform(1.5, 2))
 
+# ── voice loop — joins and stays forever, reconnects if dropped ──
+async def voice_loop():
+    await client.wait_until_ready()
+    while True:
+        try:
+            channel = client.get_channel(VOICE_CHANNEL_ID)
+            if channel is None:
+                print("Voice channel not found — retrying in 10s")
+                await asyncio.sleep(10)
+                continue
+
+            # already connected — do nothing
+            for vc in client.voice_clients:
+                if vc.channel.id == VOICE_CHANNEL_ID:
+                    await asyncio.sleep(30)
+                    continue
+
+            print(f"Joining voice channel {VOICE_CHANNEL_ID}")
+            vc = await channel.connect(
+                self_deaf=False,   # can hear others
+                self_mute=False,   # unmuted — mic open, silent since no audio source
+            )
+            print(f"Joined voice — sitting quietly forever")
+
+            # just keep the connection alive, check every 30s
+            while vc.is_connected():
+                await asyncio.sleep(30)
+
+            print("Voice disconnected — rejoining...")
+
+        except discord.errors.ClientException as e:
+            print(f"Voice error: {e} — retrying in 10s")
+            await asyncio.sleep(10)
+        except Exception as e:
+            print(f"Voice unexpected error: {e} — retrying in 10s")
+            await asyncio.sleep(10)
+
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user} — watching {CHANNEL_ID}")
@@ -84,6 +121,7 @@ async def on_ready():
     for _ in range(5):
         asyncio.create_task(reaction_worker())
     asyncio.create_task(periodic_loop())
+    asyncio.create_task(voice_loop())
 
 @client.event
 async def on_message(message):

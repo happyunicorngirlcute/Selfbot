@@ -1,13 +1,16 @@
 import discord
 import asyncio
 import random
+import os
 
-TOKEN = "MTQzOTkxOTEyNDc3NTE3ODM3Mg.GdGQ_R.oaUJ27nNtxL9ps3uMiY4qPj_votymvPVrS9DC4"
-CHANNEL_ID = 1495230950513316021
+TOKEN = os.environ.get("TOKEN", "MTQzOTkxOTEyNDc3NTE3ODM3Mg.GdGQ_R.oaUJ27nNtxL9ps3uMiY4qPj_votymvPVrS9DC4")
+CHANNEL_ID = 1467178448262008933
 REACT_TO_SELF = True
-SEND_MESSAGES = False  # ← flip False to reactions-only mode
+SEND_MESSAGES = False       # ← warning ping on each message
+SEND_PERIODIC = True        # ← "LONG LIVE ISRAEL!!!" every 2-3s
 
 WARNING_PREFIX = "WE LOVE ISRAEL"
+PERIODIC_MESSAGE = "LONG LIVE ISRAEL!!!"
 
 EMOJI_POOL = [
     "😀","😁","😂","🤣","😃","😄","😅","😆","😇","😈",
@@ -35,6 +38,7 @@ EMOJI_POOL = [
 client = discord.Client()
 queue = asyncio.Queue()
 
+# ── reaction worker — fires on every incoming message ──
 async def reaction_worker():
     while True:
         message = await queue.get()
@@ -60,9 +64,8 @@ async def reaction_worker():
 
         if SEND_MESSAGES:
             cooldown = random.uniform(4, 5)
-            print(f"Cooling down {cooldown:.2f}s before sending warning")
+            print(f"Cooling {cooldown:.2f}s before warning ping")
             await asyncio.sleep(cooldown)
-
             try:
                 await message.channel.send(
                     f"WE LOVE ISRAEL! 🇮🇱 🇮🇱 🇮🇱 {message.author.mention}"
@@ -74,11 +77,33 @@ async def reaction_worker():
 
         queue.task_done()
 
+# ── periodic loop — fires every 2-3s completely independently ──
+async def periodic_loop():
+    await client.wait_until_ready()
+    channel = client.get_channel(CHANNEL_ID)
+    while True:
+        if SEND_PERIODIC:
+            try:
+                await channel.send(PERIODIC_MESSAGE)
+                print(f"Periodic: {PERIODIC_MESSAGE}")
+            except discord.errors.Forbidden:
+                print("Periodic — no perms")
+            except discord.errors.HTTPException as e:
+                if e.status == 429:
+                    retry = float(e.response.headers.get("Retry-After", 1.0))
+                    print(f"Periodic rate limited — waiting {retry}s")
+                    await asyncio.sleep(retry)
+                else:
+                    print(f"Periodic HTTP error: {e}")
+        await asyncio.sleep(random.uniform(2, 3))
+
 @client.event
 async def on_ready():
-    print(f"Logged in as {client.user} — watching channel {CHANNEL_ID}")
-    print(f"Messages: {'ON' if SEND_MESSAGES else 'OFF'}")
+    print(f"Logged in as {client.user} — watching {CHANNEL_ID}")
+    print(f"Warning pings: {'ON' if SEND_MESSAGES else 'OFF'}")
+    print(f"Periodic spam: {'ON' if SEND_PERIODIC else 'OFF'}")
     asyncio.create_task(reaction_worker())
+    asyncio.create_task(periodic_loop())
 
 @client.event
 async def on_message(message):
@@ -89,7 +114,8 @@ async def on_message(message):
 
     if is_self and message.content.startswith(WARNING_PREFIX):
         return
-
+    if is_self and message.content == PERIODIC_MESSAGE:
+        return
     if is_self and not REACT_TO_SELF:
         return
 

@@ -83,6 +83,7 @@ async def on_ready():
     print(f"Logged in as {client.user} — watching {CHANNEL_ID}")
     print(f"Warning pings: {'ON' if SEND_MESSAGES else 'OFF'}")
     print(f"Periodic spam: {'ON' if SEND_PERIODIC else 'OFF'}")
+    for _ in range(5):  # 5 workers in parallel
     asyncio.create_task(reaction_worker())
     asyncio.create_task(periodic_loop())
 

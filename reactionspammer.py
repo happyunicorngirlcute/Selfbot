@@ -3,11 +3,11 @@ import asyncio
 import random
 import os
 
-TOKEN = os.environ.get("TOKEN", "MTQzOTkxOTEyNDc3NTE3ODM3Mg.GMdwSP.hYkdjFB-AtS98OMCwffRUMDMRo2SNtYkGLrKP0")
+TOKEN = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID = 1467178448262008933
 REACT_TO_SELF = True
-SEND_MESSAGES = False       # ← warning ping on each message
-SEND_PERIODIC = True        # ← "LONG LIVE ISRAEL!!!" every 2-3s
+SEND_MESSAGES = False
+SEND_PERIODIC = True
 
 WARNING_PREFIX = "1"
 PERIODIC_MESSAGE = "# LONG LIVE ISRAEL. ISRAEL IS THE GREATEST COUNTRY THAT EVER EXISTED, BENYAMIN NETANYAHOU IS GOD! HE IS THE GREATEST LEADER TO EVER EXIST! ISRAEL BLESS ME WITH XP!!! XPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXP 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱"
@@ -19,7 +19,6 @@ EMOJI_POOL = [
 client = discord.Client()
 queue = asyncio.Queue()
 
-# ── reaction worker — fires on every incoming message ──
 async def reaction_worker():
     while True:
         message = await queue.get()
@@ -28,7 +27,7 @@ async def reaction_worker():
         for emoji in picks:
             try:
                 await message.add_reaction(emoji)
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.1)
             except discord.errors.Forbidden:
                 print(f"Blocked — skipping {emoji}")
             except discord.errors.HTTPException as e:
@@ -58,7 +57,6 @@ async def reaction_worker():
 
         queue.task_done()
 
-# ── periodic loop — fires every 2-3s completely independently ──
 async def periodic_loop():
     await client.wait_until_ready()
     channel = client.get_channel(CHANNEL_ID)
@@ -66,7 +64,7 @@ async def periodic_loop():
         if SEND_PERIODIC:
             try:
                 await channel.send(PERIODIC_MESSAGE)
-                print(f"Periodic: {PERIODIC_MESSAGE}")
+                print(f"Periodic sent")
             except discord.errors.Forbidden:
                 print("Periodic — no perms")
             except discord.errors.HTTPException as e:
@@ -83,8 +81,8 @@ async def on_ready():
     print(f"Logged in as {client.user} — watching {CHANNEL_ID}")
     print(f"Warning pings: {'ON' if SEND_MESSAGES else 'OFF'}")
     print(f"Periodic spam: {'ON' if SEND_PERIODIC else 'OFF'}")
-    for _ in range(5):  # 5 workers in parallel
-    asyncio.create_task(reaction_worker())
+    for _ in range(8):
+        asyncio.create_task(reaction_worker())
     asyncio.create_task(periodic_loop())
 
 @client.event

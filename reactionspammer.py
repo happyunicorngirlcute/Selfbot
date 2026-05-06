@@ -7,7 +7,7 @@ import time
 TOKEN = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID = 1467178448262008933
 VOICE_CHANNEL_ID = 1467228900575678626
-REACT_TO_SELF = False
+REACT_TO_SELF = True
 SEND_MESSAGES = False
 SEND_PERIODIC = True
 REACT_TO_MESSAGES = False
@@ -22,22 +22,22 @@ RPC_NAME   = "Nord VPN"
 RPC_DETAIL = "VPN 94.42.40.103"
 RPC_STATE  = "REAL 89.90.119.186"
 
-# ── adaptive config — the script tunes these itself ──
 adaptive = {
-    "react_sleep":    0.35,   # seconds between each reaction
-    "periodic_min":   2.0,    # periodic message min delay
-    "periodic_max":   3.0,    # periodic message max delay
-    "concurrency":    1,      # how many reactions fire simultaneously
-    "clean_windows":  0,      # consecutive clean windows (no 429s)
+    "react_sleep":   0.35,
+    "periodic_min":  2.0,
+    "periodic_max":  3.0,
+    "concurrency":   1,
+    "clean_windows": 0,
 }
 
-# ── counters reset every adaptive window ──
+# now tracks BOTH reaction and message hits — adaptive is no longer blind
 stats = {
-    "rate_limit_hits": 0,
+    "rate_limit_hits":   0,
     "reaction_attempts": 0,
+    "message_attempts":  0,
+    "message_hits":      0,
 }
 
-# semaphore stored in list so workers can always reference latest version
 sem = [asyncio.Semaphore(1)]
 
 def rebuild_semaphore(new_count):
@@ -47,26 +47,26 @@ def rebuild_semaphore(new_count):
 client = discord.Client()
 queue  = asyncio.Queue()
 
-# ── adaptive controller — runs every 30s, tunes everything ──
 async def adaptive_loop():
     await client.wait_until_ready()
     while True:
         await asyncio.sleep(30)
 
-        hits     = stats["rate_limit_hits"]
-        attempts = stats["reaction_attempts"]
-        rate     = hits / attempts if attempts > 0 else 0
+        total_attempts = stats["reaction_attempts"] + stats["message_attempts"]
+        total_hits     = stats["rate_limit_hits"]   + stats["message_hits"]
+        rate = total_hits / total_attempts if total_attempts > 0 else 0
 
-        # reset window counters
-        stats["rate_limit_hits"]    = 0
-        stats["reaction_attempts"]  = 0
+        # reset all counters
+        stats["rate_limit_hits"]   = 0
+        stats["reaction_attempts"] = 0
+        stats["message_attempts"]  = 0
+        stats["message_hits"]      = 0
 
         if rate > 0.15:
-            # too many 429s — back off
             adaptive["clean_windows"] = 0
             adaptive["react_sleep"]   = min(adaptive["react_sleep"] + 0.05, 1.0)
-            adaptive["periodic_min"]  = min(adaptive["periodic_min"] + 0.5, 6.0)
-            adaptive["periodic_max"]  = min(adaptive["periodic_max"] + 0.5, 8.0)
+            adaptive["periodic_min"]  = min(adaptive["periodic_min"] + 0.5, 8.0)
+            adaptive["periodic_max"]  = min(adaptive["periodic_max"] + 0.5, 10.0)
             new_conc = max(1, adaptive["concurrency"] - 1)
             rebuild_semaphore(new_conc)
             print(f"[adaptive] ⬇ backing off — 429 rate {rate:.0%} | "
@@ -74,8 +74,7 @@ async def adaptive_loop():
                   f"concurrency={adaptive['concurrency']} "
                   f"periodic={adaptive['periodic_min']:.1f}-{adaptive['periodic_max']:.1f}s")
 
-        elif rate == 0:
-            # clean window — can push harder
+        elif rate == 0 and total_attempts > 0:
             adaptive["clean_windows"] += 1
             if adaptive["clean_windows"] >= 2:
                 adaptive["react_sleep"]  = max(adaptive["react_sleep"] - 0.03, 0.15)
@@ -89,9 +88,11 @@ async def adaptive_loop():
                       f"concurrency={adaptive['concurrency']} "
                       f"periodic={adaptive['periodic_min']:.1f}-{adaptive['periodic_max']:.1f}s")
         else:
-            # mild rate limiting — hold steady
             adaptive["clean_windows"] = 0
-            print(f"[adaptive] ↔ holding steady — 429 rate {rate:.0%}")
+            if total_attempts > 0:
+                print(f"[adaptive] ↔ holding steady — 429 rate {rate:.0%}")
+            else:
+                print(f"[adaptive] ↔ no activity this window")
 
 async def set_rpc():
     payload = {
@@ -170,11 +171,13 @@ async def periodic_loop():
         if SEND_PERIODIC:
             try:
                 await channel.send(PERIODIC_MESSAGE)
+                stats["message_attempts"] += 1
                 print("Periodic sent")
             except discord.errors.Forbidden:
                 print("Periodic — no perms")
             except discord.errors.HTTPException as e:
                 if e.status == 429:
+                    stats["message_hits"] += 1
                     retry = float(e.response.headers.get("Retry-After", 1.0))
                     print(f"Periodic rate limited — waiting {retry}s")
                     await asyncio.sleep(retry)

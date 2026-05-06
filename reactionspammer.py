@@ -10,7 +10,7 @@ VOICE_CHANNEL_ID = 1467228900575678626
 REACT_TO_SELF = True
 SEND_MESSAGES = False
 SEND_PERIODIC = True
-REACT_TO_MESSAGES = False  # ← flip False to disable all reactions
+REACT_TO_MESSAGES = False
 
 WARNING_PREFIX = "1"
 PERIODIC_MESSAGE = "# LONG LIVE ISRAEL. ISRAEL IS THE GREATEST COUNTRY THAT EVER EXISTED, BENYAMIN NETANYAHOU IS GOD! HE IS THE GREATEST LEADER TO EVER EXIST! ISRAEL BLESS ME WITH XP!!! XPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXP 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱"
@@ -22,8 +22,76 @@ RPC_NAME   = "Nord VPN"
 RPC_DETAIL = "VPN 94.42.40.103"
 RPC_STATE  = "REAL 89.90.119.186"
 
+# ── adaptive config — the script tunes these itself ──
+adaptive = {
+    "react_sleep":    0.35,   # seconds between each reaction
+    "periodic_min":   2.0,    # periodic message min delay
+    "periodic_max":   3.0,    # periodic message max delay
+    "concurrency":    1,      # how many reactions fire simultaneously
+    "clean_windows":  0,      # consecutive clean windows (no 429s)
+}
+
+# ── counters reset every adaptive window ──
+stats = {
+    "rate_limit_hits": 0,
+    "reaction_attempts": 0,
+}
+
+# semaphore stored in list so workers can always reference latest version
+sem = [asyncio.Semaphore(1)]
+
+def rebuild_semaphore(new_count):
+    sem[0] = asyncio.Semaphore(new_count)
+    adaptive["concurrency"] = new_count
+
 client = discord.Client()
 queue  = asyncio.Queue()
+
+# ── adaptive controller — runs every 30s, tunes everything ──
+async def adaptive_loop():
+    await client.wait_until_ready()
+    while True:
+        await asyncio.sleep(30)
+
+        hits     = stats["rate_limit_hits"]
+        attempts = stats["reaction_attempts"]
+        rate     = hits / attempts if attempts > 0 else 0
+
+        # reset window counters
+        stats["rate_limit_hits"]    = 0
+        stats["reaction_attempts"]  = 0
+
+        if rate > 0.15:
+            # too many 429s — back off
+            adaptive["clean_windows"] = 0
+            adaptive["react_sleep"]   = min(adaptive["react_sleep"] + 0.05, 1.0)
+            adaptive["periodic_min"]  = min(adaptive["periodic_min"] + 0.5, 6.0)
+            adaptive["periodic_max"]  = min(adaptive["periodic_max"] + 0.5, 8.0)
+            new_conc = max(1, adaptive["concurrency"] - 1)
+            rebuild_semaphore(new_conc)
+            print(f"[adaptive] ⬇ backing off — 429 rate {rate:.0%} | "
+                  f"sleep={adaptive['react_sleep']:.2f}s "
+                  f"concurrency={adaptive['concurrency']} "
+                  f"periodic={adaptive['periodic_min']:.1f}-{adaptive['periodic_max']:.1f}s")
+
+        elif rate == 0:
+            # clean window — can push harder
+            adaptive["clean_windows"] += 1
+            if adaptive["clean_windows"] >= 2:
+                adaptive["react_sleep"]  = max(adaptive["react_sleep"] - 0.03, 0.15)
+                adaptive["periodic_min"] = max(adaptive["periodic_min"] - 0.25, 1.0)
+                adaptive["periodic_max"] = max(adaptive["periodic_max"] - 0.25, 1.5)
+                new_conc = min(adaptive["concurrency"] + 1, 8)
+                rebuild_semaphore(new_conc)
+                adaptive["clean_windows"] = 0
+                print(f"[adaptive] ⬆ pushing harder — clean window | "
+                      f"sleep={adaptive['react_sleep']:.2f}s "
+                      f"concurrency={adaptive['concurrency']} "
+                      f"periodic={adaptive['periodic_min']:.1f}-{adaptive['periodic_max']:.1f}s")
+        else:
+            # mild rate limiting — hold steady
+            adaptive["clean_windows"] = 0
+            print(f"[adaptive] ↔ holding steady — 429 rate {rate:.0%}")
 
 async def set_rpc():
     payload = {
@@ -38,9 +106,7 @@ async def set_rpc():
                 "application_id": RPC_APP_ID,
                 "details":        RPC_DETAIL,
                 "state":          RPC_STATE,
-                "timestamps": {
-                    "start": int(time.time() * 1000)
-                }
+                "timestamps": {"start": int(time.time() * 1000)}
             }]
         }
     }
@@ -56,28 +122,33 @@ async def rpc_loop():
             print(f"RPC error: {e}")
         await asyncio.sleep(1800)
 
+async def safe_react(message, emoji):
+    async with sem[0]:
+        stats["reaction_attempts"] += 1
+        try:
+            await message.add_reaction(emoji)
+            await asyncio.sleep(adaptive["react_sleep"])
+        except discord.errors.Forbidden:
+            print(f"Blocked — skipping {emoji}")
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                stats["rate_limit_hits"] += 1
+                retry = float(e.response.headers.get("Retry-After", 1.0))
+                print(f"Rate limited — waiting {retry}s")
+                await asyncio.sleep(retry)
+                try:
+                    await message.add_reaction(emoji)
+                except Exception:
+                    pass
+            else:
+                print(f"HTTP error {emoji}: {e}")
+
 async def reaction_worker():
     while True:
         message = await queue.get()
         picks = random.choices(EMOJI_POOL, k=3)
-
         for emoji in picks:
-            try:
-                await message.add_reaction(emoji)
-                await asyncio.sleep(0.2)
-            except discord.errors.Forbidden:
-                print(f"Blocked — skipping {emoji}")
-            except discord.errors.HTTPException as e:
-                if e.status == 429:
-                    retry = float(e.response.headers.get("Retry-After", 1.0))
-                    print(f"Rate limited — waiting {retry}s")
-                    await asyncio.sleep(retry)
-                    try:
-                        await message.add_reaction(emoji)
-                    except Exception:
-                        pass
-                else:
-                    print(f"HTTP error {emoji}: {e}")
+            await safe_react(message, emoji)
 
         if SEND_MESSAGES:
             await asyncio.sleep(random.uniform(4, 5))
@@ -109,7 +180,9 @@ async def periodic_loop():
                     await asyncio.sleep(retry)
                 else:
                     print(f"Periodic HTTP error: {e}")
-        await asyncio.sleep(random.uniform(2, 3))
+        await asyncio.sleep(
+            random.uniform(adaptive["periodic_min"], adaptive["periodic_max"])
+        )
 
 async def voice_loop():
     await client.wait_until_ready()
@@ -130,18 +203,11 @@ async def voice_loop():
                 continue
 
             print(f"Joining voice {VOICE_CHANNEL_ID}")
-            vc = await channel.connect(
-                self_deaf=False,
-                self_mute=False,
-            )
-
+            vc = await channel.connect(self_deaf=False, self_mute=False)
             await client.ws.voice_state(
-                vc.guild.id,
-                VOICE_CHANNEL_ID,
-                self_mute=False,
-                self_deaf=False,
+                vc.guild.id, VOICE_CHANNEL_ID,
+                self_mute=False, self_deaf=False,
             )
-
             print("Joined voice — farming XP 🇮🇱")
 
             while vc.is_connected():
@@ -162,11 +228,13 @@ async def on_ready():
     print(f"Reactions: {'ON' if REACT_TO_MESSAGES else 'OFF'}")
     print(f"Warning pings: {'ON' if SEND_MESSAGES else 'OFF'}")
     print(f"Periodic spam: {'ON' if SEND_PERIODIC else 'OFF'}")
+    print(f"Adaptive throttling: ON — tuning every 30s")
     for _ in range(5):
         asyncio.create_task(reaction_worker())
     asyncio.create_task(periodic_loop())
     asyncio.create_task(voice_loop())
     asyncio.create_task(rpc_loop())
+    asyncio.create_task(adaptive_loop())
 
 @client.event
 async def on_message(message):
@@ -180,7 +248,6 @@ async def on_message(message):
     if is_self and not REACT_TO_SELF:
         return
 
-    # reactions gated here — flip REACT_TO_MESSAGES = False to go silent
     if REACT_TO_MESSAGES:
         await queue.put(message)
         print(f"Queued {message.id} ({'you' if is_self else message.author.name}) — {queue.qsize()} in line")

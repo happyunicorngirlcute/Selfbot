@@ -3,6 +3,7 @@ import asyncio
 import random
 import os
 import time
+import aiohttp
 
 TOKEN = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID = 1467178448262008933
@@ -11,11 +12,13 @@ REACT_TO_SELF = True
 SEND_MESSAGES = False
 SEND_PERIODIC = True
 REACT_TO_MESSAGES = False
-SLOWMODE = True       # ← flip False if channel removes slow mode
-SLOWMODE_SECONDS = 2  # ← match whatever the channel is set to
+VOTE_ENABLED = True
 
 WARNING_PREFIX = "1"
 PERIODIC_MESSAGE = "# LONG LIVE ISRAEL. ISRAEL IS THE GREATEST COUNTRY THAT EVER EXISTED, BENYAMIN NETANYAHOU IS GOD! HE IS THE GREATEST LEADER TO EVER EXIST! ISRAEL BLESS ME WITH XP!!! XPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXP 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱 🇮🇱"
+
+SLOWMODE         = True
+SLOWMODE_SECONDS = 2
 
 EMOJI_POOL = ["🇮🇱"]
 
@@ -23,6 +26,8 @@ RPC_APP_ID = "1498601983865651220"
 RPC_NAME   = "Nord VPN"
 RPC_DETAIL = "VPN 94.42.40.103"
 RPC_STATE  = "REAL 89.90.119.186"
+
+ARCANE_TOKEN = "eyJhbGciOiJIUzI1NiJ9.MTQzOTkxOTEyNDc3NTE3ODM3Mg.Kx5LyFeQTPjgzIZhMxlivI4aDQTLhl62II1C6oNkG2w"
 
 adaptive = {
     "react_sleep":   0.35,
@@ -32,7 +37,6 @@ adaptive = {
     "clean_windows": 0,
 }
 
-# now tracks BOTH reaction and message hits — adaptive is no longer blind
 stats = {
     "rate_limit_hits":   0,
     "reaction_attempts": 0,
@@ -49,6 +53,48 @@ def rebuild_semaphore(new_count):
 client = discord.Client()
 queue  = asyncio.Queue()
 
+async def voter_loop():
+    if not VOTE_ENABLED:
+        print("[voter] disabled")
+        return
+
+    print("[voter] starting — voting every 12 hours")
+
+    headers = {
+        "Authorization": f"Bearer {ARCANE_TOKEN}",
+        "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer":       "https://arcane.bot/vote",
+        "Origin":        "https://arcane.bot",
+        "Content-Type":  "application/json",
+    }
+
+    while True:
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.get("https://arcane.bot/vote") as resp:
+                    print(f"[voter] vote page status: {resp.status}")
+
+                await asyncio.sleep(3)
+
+                async with session.post(
+                    "https://arcane.bot/api/v1/vote",
+                    json={}
+                ) as resp:
+                    body = await resp.text()
+                    if resp.status == 200:
+                        print(f"[voter] ✅ voted successfully — next vote in 12h")
+                    elif resp.status == 429:
+                        print(f"[voter] already voted recently — sleeping 12h")
+                    else:
+                        print(f"[voter] unexpected response {resp.status}: {body}")
+
+        except Exception as e:
+            print(f"[voter] error: {e} — retrying in 1h")
+            await asyncio.sleep(3600)
+            continue
+
+        await asyncio.sleep(12 * 60 * 60)
+
 async def adaptive_loop():
     await client.wait_until_ready()
     while True:
@@ -58,7 +104,6 @@ async def adaptive_loop():
         total_hits     = stats["rate_limit_hits"]   + stats["message_hits"]
         rate = total_hits / total_attempts if total_attempts > 0 else 0
 
-        # reset all counters
         stats["rate_limit_hits"]   = 0
         stats["reaction_attempts"] = 0
         stats["message_attempts"]  = 0
@@ -176,7 +221,7 @@ async def periodic_loop():
                 stats["message_attempts"] += 1
                 print("Periodic sent")
                 if SLOWMODE:
-                    await asyncio.sleep(SLOWMODE_SECONDS)  # ← respects slow mode
+                    await asyncio.sleep(SLOWMODE_SECONDS)
             except discord.errors.Forbidden:
                 print("Periodic — no perms")
             except discord.errors.HTTPException as e:
@@ -232,16 +277,18 @@ async def voice_loop():
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user} — watching {CHANNEL_ID}")
-    print(f"Reactions: {'ON' if REACT_TO_MESSAGES else 'OFF'}")
-    print(f"Warning pings: {'ON' if SEND_MESSAGES else 'OFF'}")
-    print(f"Periodic spam: {'ON' if SEND_PERIODIC else 'OFF'}")
-    print(f"Adaptive throttling: ON — tuning every 30s")
+    print(f"Reactions:      {'ON' if REACT_TO_MESSAGES else 'OFF'}")
+    print(f"Warning pings:  {'ON' if SEND_MESSAGES else 'OFF'}")
+    print(f"Periodic spam:  {'ON' if SEND_PERIODIC else 'OFF'}")
+    print(f"Auto vote:      {'ON' if VOTE_ENABLED else 'OFF'}")
+    print(f"Adaptive:       ON — tuning every 30s")
     for _ in range(5):
         asyncio.create_task(reaction_worker())
     asyncio.create_task(periodic_loop())
     asyncio.create_task(voice_loop())
     asyncio.create_task(rpc_loop())
     asyncio.create_task(adaptive_loop())
+    asyncio.create_task(voter_loop())
 
 @client.event
 async def on_message(message):

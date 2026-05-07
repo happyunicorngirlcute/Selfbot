@@ -61,12 +61,13 @@ async def voter_loop():
     print("[voter] starting — voting every 12 hours")
 
     headers = {
-        "Authorization": f"Bearer {ARCANE_TOKEN}",
-        "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Referer":       "https://arcane.bot/vote",
-        "Origin":        "https://arcane.bot",
-        "Content-Type":  "application/json",
-    }
+    "Cookie":        f"arcane_token={ARCANE_TOKEN}; cf_clearance=dijwoYfIacD7NE1y3rJdf5vEF7.QEfa1hY63oooxBPM-1778138260-1.2.1.1-Ngv9qbR8r17mdXy5ua.DgW__iu1TxxIg6eW.WeLNn8VxGjVMPuKvPAyFHUHGwZre_WfrTY4m5IoNGeQjUYAbKhX1rim5vU0XecoruttJ80WnsVVYe3ULymcmYDT4tb_e7P2f9wH_xXQ0OiO4aOMnx9bJs4CuFy8.A6XNpM_58GnTingJ1AbmGP.sm57vrEaKL5JtD_F0ip.X1DaoH.ncg4X_cEIc01glaCV3IOX3.K0APfYqMlfOYj_NqElQezHmww8.cNd0C5IOPKf9yuLPhlKCw6beQ7zJDtRKiiXNmusVAYta5CXZ0IBiLR6Aa6naENBKUBbUC0IC2X6kql246Q",
+    "Authorization": f"Bearer {ARCANE_TOKEN}",
+    "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Referer":       "https://arcane.bot/vote",
+    "Origin":        "https://arcane.bot",
+    "Content-Type":  "application/json",
+}
 
     while True:
         try:

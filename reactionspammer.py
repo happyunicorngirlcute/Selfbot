@@ -174,8 +174,6 @@ async def periodic_loop():
                 await channel.send(PERIODIC_MESSAGE)
                 stats["message_attempts"] += 1
                 print("Periodic sent")
-                if SLOWMODE:
-                    await asyncio.sleep(SLOWMODE_SECONDS)
             except discord.errors.Forbidden:
                 print("Periodic — no perms")
             except discord.errors.HTTPException as e:
@@ -186,9 +184,14 @@ async def periodic_loop():
                     await asyncio.sleep(retry)
                 else:
                     print(f"Periodic HTTP error: {e}")
-        await asyncio.sleep(
-            random.uniform(adaptive["periodic_min"], adaptive["periodic_max"])
+
+        # fixed floor = slowmode + safe buffer, adaptive can only push it HIGHER never lower
+        base  = SLOWMODE_SECONDS + 1.5   # 3s slowmode + 1.5s buffer = 4.5s minimum
+        extra = random.uniform(
+            max(adaptive["periodic_min"], 0),   # adaptive bonus on top
+            max(adaptive["periodic_max"], 0.5),
         )
+        await asyncio.sleep(base + extra)
 
 async def voice_loop():
     await client.wait_until_ready()

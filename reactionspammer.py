@@ -3,6 +3,7 @@ import asyncio
 import random
 import os
 import time
+import subprocess
 
 TOKEN            = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID       = 1467178448262008933
@@ -20,7 +21,7 @@ PERIODIC_MESSAGE = "# יחי ישראל. ישראל היא המדינה הגדו
 SLOWMODE         = True
 SLOWMODE_SECONDS = 3
 
-EMOJI_POOL       = ["🇮🇱"]
+EMOJI_POOL = ["🇮🇱"]
 
 RPC_APP_ID = "1498601983865651220"
 RPC_NAME   = "Nord VPN"
@@ -51,29 +52,40 @@ def rebuild_semaphore(new_count):
 client = discord.Client()
 queue  = asyncio.Queue()
 
-def make_stream_source():
-    return discord.FFmpegVideoAudio(
-        IMAGE_PATH,
-        before_options=(
-            "-loop 1 "
-            "-framerate 30 "
-        ),
-        options=(
-            "-vf scale=1280:720 "
-            "-c:v libx264 "
-            "-preset ultrafast "
-            "-tune stillimage "
-            "-pix_fmt yuv420p "
-            "-b:v 2500k "
-            "-maxrate 2500k "
-            "-bufsize 5000k "
-            "-f flv "
-            "-c:a libopus "
-            "-b:a 128k "
-            "-ar 48000 "
-            "-ac 2"
-        ),
-    )
+class FFmpegImageStream(discord.AudioSource):
+    def __init__(self, image_path: str = IMAGE_PATH):
+        self._process = None
+        self._process = subprocess.Popen(
+            [
+                "ffmpeg",
+                "-loop",      "1",
+                "-framerate", "1",
+                "-i",         image_path,
+                "-f",         "lavfi",
+                "-i",         "anullsrc=r=48000:cl=stereo",
+                "-c:v",       "libx264",
+                "-preset",    "ultrafast",
+                "-tune",      "stillimage",
+                "-pix_fmt",   "yuv420p",
+                "-map",       "1:a",
+                "-c:a",       "pcm_s16le",
+                "-ar",        "48000",
+                "-ac",        "2",
+                "-f",         "s16le",
+                "-loglevel",  "quiet",
+                "pipe:1",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def read(self) -> bytes:
+        return self._process.stdout.read(3840)
+
+    def cleanup(self):
+        if self._process:
+            self._process.kill()
+            self._process.wait()
 
 async def start_stream(vc):
     try:
@@ -277,16 +289,16 @@ async def voice_loop():
 
             if STREAMING:
                 await asyncio.sleep(1)
-                source = make_stream_source()
-                vc.play(source, after=lambda e: print(f"[stream] ended: {e}"))
+                source = FFmpegImageStream()
+                vc.play(source, after=lambda e: print(f"[stream] audio ended: {e}"))
                 await start_stream(vc)
-                print("Joined voice — image streaming live 🇮🇱")
+                print("Joined voice — streaming image 🇮🇱")
             else:
                 print("Joined voice — farming XP 🇮🇱")
 
             while vc.is_connected():
                 if STREAMING and not vc.is_playing():
-                    source = make_stream_source()
+                    source = FFmpegImageStream()
                     vc.play(source, after=lambda e: print(f"[stream] restarted: {e}"))
                 await asyncio.sleep(10)
 

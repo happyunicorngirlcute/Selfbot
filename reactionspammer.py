@@ -5,15 +5,14 @@ import os
 import time
 import subprocess
 
-TOKEN            = os.environ.get("TOKEN", "your_token_here")
+TOKEN = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID       = 1467178448262008933
 VOICE_CHANNEL_ID = 1467228900575678626
 REACT_TO_SELF    = False
 SEND_MESSAGES    = False
 SEND_PERIODIC    = True
 REACT_TO_MESSAGES = False
-STREAMING        = True
-IMAGE_PATH       = "image.png"
+STREAMING        = True  
 
 WARNING_PREFIX = "1"
 PERIODIC_MESSAGE = "# יחי ישראל. ישראל היא המדינה הגדולה ביותר שאי פעם קמה, בנימין נתניהו הוא אלוהים! הוא המנהיג הגדול ביותר שאי פעם קם! ישראל ברכי אותי ב-XP!!! XPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXP 🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱"
@@ -52,27 +51,17 @@ def rebuild_semaphore(new_count):
 client = discord.Client()
 queue  = asyncio.Queue()
 
-class FFmpegImageStream(discord.AudioSource):
-    def __init__(self, image_path: str = IMAGE_PATH):
-        self._process = None
+class FFmpegSilenceAudio(discord.AudioSource):
+    def __init__(self):
         self._process = subprocess.Popen(
             [
                 "ffmpeg",
-                "-loop",      "1",
-                "-framerate", "1",
-                "-i",         image_path,
-                "-f",         "lavfi",
-                "-i",         "anullsrc=r=48000:cl=stereo",
-                "-c:v",       "libx264",
-                "-preset",    "ultrafast",
-                "-tune",      "stillimage",
-                "-pix_fmt",   "yuv420p",
-                "-map",       "1:a",
-                "-c:a",       "pcm_s16le",
-                "-ar",        "48000",
-                "-ac",        "2",
-                "-f",         "s16le",
-                "-loglevel",  "quiet",
+                "-f",      "lavfi",
+                "-i",      "anullsrc=r=48000:cl=stereo",
+                "-ar",     "48000",
+                "-ac",     "2",
+                "-f",      "s16le",
+                "-loglevel", "quiet",
                 "pipe:1",
             ],
             stdout=subprocess.PIPE,
@@ -83,10 +72,10 @@ class FFmpegImageStream(discord.AudioSource):
         return self._process.stdout.read(3840)
 
     def cleanup(self):
-        if self._process:
-            self._process.kill()
-            self._process.wait()
+        self._process.kill()
+        self._process.wait()
 
+# ── stream helpers ───────────────────────────────
 async def start_stream(vc):
     try:
         await client.ws.send_as_json({
@@ -169,15 +158,15 @@ async def set_rpc():
         "op": 3,
         "d": {
             "status": "idle",
-            "since":  0,
-            "afk":    False,
+            "since": 0,
+            "afk": False,
             "activities": [{
                 "name":           RPC_NAME,
                 "type":           0,
                 "application_id": RPC_APP_ID,
                 "details":        RPC_DETAIL,
                 "state":          RPC_STATE,
-                "timestamps":     {"start": int(time.time() * 1000)}
+                "timestamps": {"start": int(time.time() * 1000)}
             }]
         }
     }
@@ -289,16 +278,16 @@ async def voice_loop():
 
             if STREAMING:
                 await asyncio.sleep(1)
-                source = FFmpegImageStream()
+                source = FFmpegSilenceAudio()
                 vc.play(source, after=lambda e: print(f"[stream] audio ended: {e}"))
                 await start_stream(vc)
-                print("Joined voice — streaming image 🇮🇱")
+                print("Joined voice — streaming silence 🇮🇱")
             else:
                 print("Joined voice — farming XP 🇮🇱")
 
             while vc.is_connected():
                 if STREAMING and not vc.is_playing():
-                    source = FFmpegImageStream()
+                    source = FFmpegSilenceAudio()
                     vc.play(source, after=lambda e: print(f"[stream] restarted: {e}"))
                 await asyncio.sleep(10)
 
@@ -319,7 +308,7 @@ async def on_ready():
     print(f"Reactions:      {'ON' if REACT_TO_MESSAGES else 'OFF'}")
     print(f"Warning pings:  {'ON' if SEND_MESSAGES else 'OFF'}")
     print(f"Periodic spam:  {'ON' if SEND_PERIODIC else 'OFF'}")
-    print(f"Streaming:      {'ON — ' + IMAGE_PATH if STREAMING else 'OFF'}")
+    print(f"Streaming:      {'ON — real FFmpeg audio stream' if STREAMING else 'OFF'}")
     print(f"Adaptive:       ON — tuning every 30s")
     for _ in range(5):
         asyncio.create_task(reaction_worker())

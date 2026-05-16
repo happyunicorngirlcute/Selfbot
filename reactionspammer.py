@@ -12,7 +12,7 @@ REACT_TO_SELF    = False
 SEND_MESSAGES    = False
 SEND_PERIODIC    = True
 REACT_TO_MESSAGES = False
-STREAMING        = True   # ← flip False to disable real stream
+STREAMING        = True  
 
 WARNING_PREFIX = "1"
 PERIODIC_MESSAGE = "# יחי ישראל. ישראל היא המדינה הגדולה ביותר שאי פעם קמה, בנימין נתניהו הוא אלוהים! הוא המנהיג הגדול ביותר שאי פעם קם! ישראל ברכי אותי ב-XP!!! XPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXP 🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱"
@@ -51,10 +51,6 @@ def rebuild_semaphore(new_count):
 client = discord.Client()
 queue  = asyncio.Queue()
 
-# ── FFmpeg silence source ────────────────────────
-# generates infinite PCM silence — discord.py-self
-# treats this as a real audio stream, which opens
-# an actual voice session Discord tracks as a stream
 class FFmpegSilenceAudio(discord.AudioSource):
     def __init__(self):
         self._process = subprocess.Popen(
@@ -73,7 +69,6 @@ class FFmpegSilenceAudio(discord.AudioSource):
         )
 
     def read(self) -> bytes:
-        # discord expects 20ms frames: 48000hz * 2ch * 2bytes * 0.02s = 3840 bytes
         return self._process.stdout.read(3840)
 
     def cleanup(self):
@@ -283,17 +278,14 @@ async def voice_loop():
 
             if STREAMING:
                 await asyncio.sleep(1)
-                # play FFmpeg silence — opens a real audio stream session
                 source = FFmpegSilenceAudio()
                 vc.play(source, after=lambda e: print(f"[stream] audio ended: {e}"))
-                # fire the LIVE gateway event
                 await start_stream(vc)
                 print("Joined voice — streaming silence 🇮🇱")
             else:
                 print("Joined voice — farming XP 🇮🇱")
 
             while vc.is_connected():
-                # restart audio if it stopped (FFmpeg died etc)
                 if STREAMING and not vc.is_playing():
                     source = FFmpegSilenceAudio()
                     vc.play(source, after=lambda e: print(f"[stream] restarted: {e}"))

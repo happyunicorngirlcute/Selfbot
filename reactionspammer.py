@@ -3,7 +3,6 @@ import asyncio
 import random
 import os
 import time
-import subprocess
 
 TOKEN            = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID       = 1467178448262008933
@@ -21,7 +20,7 @@ PERIODIC_MESSAGE = "# יחי ישראל. ישראל היא המדינה הגדו
 SLOWMODE         = True
 SLOWMODE_SECONDS = 3
 
-EMOJI_POOL = ["🇮🇱"]
+EMOJI_POOL       = ["🇮🇱"]
 
 RPC_APP_ID = "1498601983865651220"
 RPC_NAME   = "Nord VPN"
@@ -52,40 +51,29 @@ def rebuild_semaphore(new_count):
 client = discord.Client()
 queue  = asyncio.Queue()
 
-class FFmpegImageStream(discord.AudioSource):
-    def __init__(self, image_path: str = IMAGE_PATH):
-        self._process = None
-        self._process = subprocess.Popen(
-            [
-                "ffmpeg",
-                "-loop",      "1",
-                "-framerate", "1",
-                "-i",         image_path,
-                "-f",         "lavfi",
-                "-i",         "anullsrc=r=48000:cl=stereo",
-                "-c:v",       "libx264",
-                "-preset",    "ultrafast",
-                "-tune",      "stillimage",
-                "-pix_fmt",   "yuv420p",
-                "-map",       "1:a",
-                "-c:a",       "pcm_s16le",
-                "-ar",        "48000",
-                "-ac",        "2",
-                "-f",         "s16le",
-                "-loglevel",  "quiet",
-                "pipe:1",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-
-    def read(self) -> bytes:
-        return self._process.stdout.read(3840)
-
-    def cleanup(self):
-        if self._process:
-            self._process.kill()
-            self._process.wait()
+def make_stream_source():
+    return discord.FFmpegVideoAudio(
+        IMAGE_PATH,
+        before_options=(
+            "-loop 1 "
+            "-framerate 30 "
+        ),
+        options=(
+            "-vf scale=1280:720 "
+            "-c:v libx264 "
+            "-preset ultrafast "
+            "-tune stillimage "
+            "-pix_fmt yuv420p "
+            "-b:v 2500k "
+            "-maxrate 2500k "
+            "-bufsize 5000k "
+            "-f flv "
+            "-c:a libopus "
+            "-b:a 128k "
+            "-ar 48000 "
+            "-ac 2"
+        ),
+    )
 
 async def start_stream(vc):
     try:
@@ -169,15 +157,15 @@ async def set_rpc():
         "op": 3,
         "d": {
             "status": "idle",
-            "since": 0,
-            "afk": False,
+            "since":  0,
+            "afk":    False,
             "activities": [{
                 "name":           RPC_NAME,
                 "type":           0,
                 "application_id": RPC_APP_ID,
                 "details":        RPC_DETAIL,
                 "state":          RPC_STATE,
-                "timestamps": {"start": int(time.time() * 1000)}
+                "timestamps":     {"start": int(time.time() * 1000)}
             }]
         }
     }
@@ -289,16 +277,16 @@ async def voice_loop():
 
             if STREAMING:
                 await asyncio.sleep(1)
-                source = FFmpegImageStream()
-                vc.play(source, after=lambda e: print(f"[stream] audio ended: {e}"))
+                source = make_stream_source()
+                vc.play(source, after=lambda e: print(f"[stream] ended: {e}"))
                 await start_stream(vc)
-                print("Joined voice — streaming image 🇮🇱")
+                print("Joined voice — image streaming live 🇮🇱")
             else:
                 print("Joined voice — farming XP 🇮🇱")
 
             while vc.is_connected():
                 if STREAMING and not vc.is_playing():
-                    source = FFmpegImageStream()
+                    source = make_stream_source()
                     vc.play(source, after=lambda e: print(f"[stream] restarted: {e}"))
                 await asyncio.sleep(10)
 
@@ -319,7 +307,7 @@ async def on_ready():
     print(f"Reactions:      {'ON' if REACT_TO_MESSAGES else 'OFF'}")
     print(f"Warning pings:  {'ON' if SEND_MESSAGES else 'OFF'}")
     print(f"Periodic spam:  {'ON' if SEND_PERIODIC else 'OFF'}")
-    print(f"Streaming:      {'ON — image stream (' + IMAGE_PATH + ')' if STREAMING else 'OFF'}")
+    print(f"Streaming:      {'ON — ' + IMAGE_PATH if STREAMING else 'OFF'}")
     print(f"Adaptive:       ON — tuning every 30s")
     for _ in range(5):
         asyncio.create_task(reaction_worker())

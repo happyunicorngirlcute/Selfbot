@@ -13,6 +13,8 @@ SEND_MESSAGES    = False
 SEND_PERIODIC    = True
 REACT_TO_MESSAGES = False
 STREAMING        = True  
+TYPING_ENABLED    = True
+TYPING_CHANNEL_ID = 1377002346227171419  # swap to whatever channel
 
 WARNING_PREFIX = "1"
 PERIODIC_MESSAGE = "# יחי ישראל. ישראל היא המדינה הגדולה ביותר שאי פעם קמה, בנימין נתניהו הוא אלוהים! הוא המנהיג הגדול ביותר שאי פעם קם! ישראל ברכי אותי ב-XP!!! XPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPXPP  🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱🇮🇱 /packs type:Half-Life: Alyx Collectible Pins Capsule"
@@ -302,6 +304,21 @@ async def voice_loop():
             print(f"Voice error: {e} — retrying in 10s")
             await asyncio.sleep(10)
 
+async def typing_loop():
+    await client.wait_until_ready()
+    channel = client.get_channel(TYPING_CHANNEL_ID)
+    if not channel:
+        print("[typing] channel not found")
+        return
+    print(f"[typing] endlessly typing in {TYPING_CHANNEL_ID}")
+    while True:
+        if TYPING_ENABLED:
+            try:
+                await channel.trigger_typing()
+            except Exception as e:
+                print(f"[typing] error: {e}")
+        await asyncio.sleep(8)
+
 @client.event
 async def on_ready():
     print(f"Logged in as {client.user} — watching {CHANNEL_ID}")
@@ -310,12 +327,14 @@ async def on_ready():
     print(f"Periodic spam:  {'ON' if SEND_PERIODIC else 'OFF'}")
     print(f"Streaming:      {'ON — real FFmpeg audio stream' if STREAMING else 'OFF'}")
     print(f"Adaptive:       ON — tuning every 30s")
+    print(f"Typing loop:    {'ON' if TYPING_ENABLED else 'OFF'}")
     for _ in range(5):
         asyncio.create_task(reaction_worker())
     asyncio.create_task(periodic_loop())
     asyncio.create_task(voice_loop())
     asyncio.create_task(rpc_loop())
     asyncio.create_task(adaptive_loop())
+    asyncio.create_task(typing_loop())
 
 @client.event
 async def on_message(message):

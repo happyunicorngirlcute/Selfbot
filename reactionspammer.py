@@ -314,7 +314,7 @@ async def typing_loop():
     while True:
         if TYPING_ENABLED:
             try:
-                await channel.trigger_typing()
+                await client.http.send_typing(channel.id)  # ← this is the fix
             except Exception as e:
                 print(f"[typing] error: {e}")
         await asyncio.sleep(8)

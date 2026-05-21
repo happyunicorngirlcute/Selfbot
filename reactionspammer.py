@@ -17,7 +17,7 @@ TYPING_ENABLED    = True
 TYPING_CHANNEL_ID = 1467157694681972778  # swap to whatever channel
 
 WARNING_PREFIX = "1"
-PERIODIC_MESSAGE = "/packs type:Half-Life: Alyx Collectible Pins Capsule""
+PERIODIC_MESSAGE = "/packs type:Half-Life: Alyx Collectible Pins Capsule"
 
 SLOWMODE         = True
 SLOWMODE_SECONDS = 3

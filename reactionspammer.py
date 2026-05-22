@@ -9,7 +9,7 @@ from discord.http import Route
 TOKEN = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID        = 1467178448262008933
 VOICE_CHANNEL_ID  = 1467228900575678626
-TYPING_CHANNEL_ID = 1426147773182378146
+TYPING_CHANNEL_ID = 1467157694681972778
 
 REACT_TO_SELF     = False
 SEND_MESSAGES     = False
@@ -17,7 +17,7 @@ SEND_PERIODIC     = True
 REACT_TO_MESSAGES = False
 STREAMING         = True
 TYPING_ENABLED    = True
-BOT_COMMAND_ENABLED = True   # ← flip True to send as real slash command instead of text
+BOT_COMMAND_ENABLED = True 
 
 WARNING_PREFIX = "1"
 

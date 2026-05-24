@@ -11,29 +11,32 @@ CHANNEL_ID        = 1467178448262008933
 VOICE_CHANNEL_ID  = 1467228900575678626
 TYPING_CHANNEL_ID = 1426147773182378146
 
-REACT_TO_SELF     = False
-SEND_MESSAGES     = False
-SEND_PERIODIC     = True
-REACT_TO_MESSAGES = False
-STREAMING         = True
-TYPING_ENABLED    = True
-BOT_COMMAND_ENABLED = True 
+REACT_TO_SELF       = False
+SEND_MESSAGES       = False
+SEND_PERIODIC       = True
+REACT_TO_MESSAGES   = False
+STREAMING           = True
+TYPING_ENABLED      = True
+BOT_COMMAND_ENABLED = True
 
 WARNING_PREFIX = "1"
 
-# ── what gets sent periodically ─────────────────
-# if BOT_COMMAND_ENABLED is False  → sent as plain text
-# if BOT_COMMAND_ENABLED is True   → executed as a real slash command interaction
-PERIODIC_MESSAGE       = "/packs type:Half-Life: Alyx Collectible Pins Capsule"
-BOT_ID                 = 1500119412009603092
-BOT_COMMAND_NAME       = "packs"
-BOT_COMMAND_OPTION_NAME  = "type"
-BOT_COMMAND_OPTION_VALUE = "Half-Life: Alyx Collectible Pins Capsule"
+PERIODIC_MESSAGE     = "/packs"
+BOT_COMMAND_NAME     = "packs"
+BOT_COMMAND_OPTION_NAME = "type"
+
+# rotates in order forever: HL Alyx → Series 1 → Series 2 → Series 3 → HL Alyx → ...
+BOT_COMMAND_OPTION_VALUES = [
+    "Half-Life: Alyx Collectible Pins Capsule",
+    "Collectible Pins Capsule Series 1",
+    "Collectible Pins Capsule Series 2",
+    "Collectible Pins Capsule Series 3",
+]
 
 SLOWMODE         = True
 SLOWMODE_SECONDS = 3
 
-LO_USER_ID = 1439919124775178372  # only you can run !commands
+LO_USER_ID = 1439919124775178372
 
 EMOJI_POOL = ["🇮🇱"]
 
@@ -57,8 +60,9 @@ stats = {
     "message_hits":      0,
 }
 
-sem          = [asyncio.Semaphore(1)]
-_cached_cmd  = {}   # caches slash command id/version after first fetch
+sem             = [asyncio.Semaphore(1)]
+_cached_cmd     = {}
+_rotation_index = 0
 
 def rebuild_semaphore(new_count):
     sem[0] = asyncio.Semaphore(new_count)
@@ -70,6 +74,7 @@ queue  = asyncio.Queue()
 # ── FFmpeg silence ───────────────────────────────
 class FFmpegSilenceAudio(discord.AudioSource):
     def __init__(self):
+        self._process = None
         self._process = subprocess.Popen(
             ["ffmpeg", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
              "-ar", "48000", "-ac", "2", "-f", "s16le", "-loglevel", "quiet", "pipe:1"],
@@ -80,8 +85,9 @@ class FFmpegSilenceAudio(discord.AudioSource):
         return self._process.stdout.read(3840)
 
     def cleanup(self):
-        self._process.kill()
-        self._process.wait()
+        if self._process:
+            self._process.kill()
+            self._process.wait()
 
 # ── stream helpers ───────────────────────────────
 async def start_stream(vc):
@@ -108,31 +114,40 @@ async def stop_stream(vc):
         print(f"[stream] stop error: {e}")
 
 # ── slash command helpers ────────────────────────
-async def fetch_and_cache_command(guild):
+async def fetch_and_cache_command(channel):
+    """uses the channel search endpoint — same one Discord hits when you type /"""
     try:
-        cmds = await guild.application_commands()
-        for cmd in cmds:
-            if cmd.name.lower() == BOT_COMMAND_NAME.lower():
-                _cached_cmd["id"]             = cmd.id
-                _cached_cmd["version"]        = getattr(cmd, "version", 1)
-                _cached_cmd["application_id"] = cmd.application_id
-                print(f"[cmd] cached /{BOT_COMMAND_NAME} — id={cmd.id} app={cmd.application_id}")
-                return True
-        print(f"[cmd] /{BOT_COMMAND_NAME} not found in guild")
-        return False
+        data = await client.http.request(
+            Route("GET", f"/channels/{channel.id}/application-commands/search"),
+            params={"type": 1, "query": BOT_COMMAND_NAME, "limit": 1}
+        )
+        cmds = data.get("application_commands", [])
+        if not cmds:
+            print(f"[cmd] /{BOT_COMMAND_NAME} not found via channel search")
+            return False
+        cmd = cmds[0]
+        _cached_cmd["id"]             = cmd["id"]
+        _cached_cmd["version"]        = cmd.get("version", "1")
+        _cached_cmd["application_id"] = cmd["application_id"]
+        print(f"[cmd] cached /{BOT_COMMAND_NAME} — id={cmd['id']} app={cmd['application_id']}")
+        return True
     except Exception as e:
         print(f"[cmd] fetch error: {e}")
         return False
 
 async def execute_slash_command(channel):
-    """fires a real slash command interaction — bot receives it as if you typed it"""
+    global _rotation_index
+
     if not _cached_cmd:
         print("[cmd] not cached — fetching now...")
-        ok = await fetch_and_cache_command(channel.guild)
+        ok = await fetch_and_cache_command(channel)
         if not ok:
             print("[cmd] falling back to text")
             await channel.send(PERIODIC_MESSAGE)
             return
+
+    option_value = BOT_COMMAND_OPTION_VALUES[_rotation_index % len(BOT_COMMAND_OPTION_VALUES)]
+    _rotation_index += 1
 
     try:
         payload = {
@@ -150,14 +165,14 @@ async def execute_slash_command(channel):
                     {
                         "type":  3,
                         "name":  BOT_COMMAND_OPTION_NAME,
-                        "value": BOT_COMMAND_OPTION_VALUE,
+                        "value": option_value,
                     }
                 ],
             },
             "nonce": str(discord.utils.time_snowflake(discord.utils.utcnow())),
         }
         await client.http.request(Route("POST", "/interactions"), json=payload)
-        print(f"[cmd] /{BOT_COMMAND_NAME} executed via real interaction")
+        print(f"[cmd] /{BOT_COMMAND_NAME} → {option_value}")
 
     except Exception as e:
         print(f"[cmd] interaction error: {e} — falling back to text")
@@ -166,31 +181,23 @@ async def execute_slash_command(channel):
         except Exception:
             pass
 
-# ── discord command handler (!commands only LO can use) ──
+# ── discord command handler ──────────────────────
 async def handle_command(message):
     global TYPING_ENABLED, SEND_PERIODIC, REACT_TO_MESSAGES
     global STREAMING, SEND_MESSAGES, BOT_COMMAND_ENABLED
 
     cmd = message.content.lower().split()[0][1:]
 
-    toggles = {
-        "typing":    lambda: None,
-        "periodic":  lambda: None,
-        "reactions": lambda: None,
-        "streaming": lambda: None,
-        "messages":  lambda: None,
-        "botcmd":    lambda: None,
-    }
-
-    if cmd not in toggles and cmd != "status":
+    valid = {"typing", "periodic", "reactions", "streaming", "messages", "botcmd", "status"}
+    if cmd not in valid:
         return
 
-    if cmd == "typing":    TYPING_ENABLED       = not TYPING_ENABLED
-    if cmd == "periodic":  SEND_PERIODIC        = not SEND_PERIODIC
-    if cmd == "reactions": REACT_TO_MESSAGES    = not REACT_TO_MESSAGES
-    if cmd == "streaming": STREAMING            = not STREAMING
-    if cmd == "messages":  SEND_MESSAGES        = not SEND_MESSAGES
-    if cmd == "botcmd":    BOT_COMMAND_ENABLED  = not BOT_COMMAND_ENABLED
+    if cmd == "typing":    TYPING_ENABLED      = not TYPING_ENABLED
+    if cmd == "periodic":  SEND_PERIODIC       = not SEND_PERIODIC
+    if cmd == "reactions": REACT_TO_MESSAGES   = not REACT_TO_MESSAGES
+    if cmd == "streaming": STREAMING           = not STREAMING
+    if cmd == "messages":  SEND_MESSAGES       = not SEND_MESSAGES
+    if cmd == "botcmd":    BOT_COMMAND_ENABLED = not BOT_COMMAND_ENABLED
 
     if cmd == "status":
         await message.channel.send(
@@ -201,6 +208,7 @@ async def handle_command(message):
             f"\nstreaming: {'ON' if STREAMING else 'OFF'}"
             f"\nmessages:  {'ON' if SEND_MESSAGES else 'OFF'}"
             f"\nbotcmd:    {'ON — slash interaction' if BOT_COMMAND_ENABLED else 'OFF — plain text'}"
+            f"\nrotation:  {_rotation_index % len(BOT_COMMAND_OPTION_VALUES)} / {len(BOT_COMMAND_OPTION_VALUES)}"
             f"\n```",
             delete_after=10
         )
@@ -355,10 +363,8 @@ async def periodic_loop():
         if SEND_PERIODIC:
             try:
                 if BOT_COMMAND_ENABLED:
-                    # fires a real slash command interaction
                     await execute_slash_command(channel)
                 else:
-                    # sends as plain text
                     await channel.send(PERIODIC_MESSAGE)
                 stats["message_attempts"] += 1
                 print(f"Periodic {'[slash]' if BOT_COMMAND_ENABLED else '[text]'} sent")
@@ -441,13 +447,12 @@ async def on_ready():
     print(f"Streaming:      {'ON — FFmpeg stream' if STREAMING else 'OFF'}")
     print(f"Typing loop:    {'ON' if TYPING_ENABLED else 'OFF'}")
     print(f"Adaptive:       ON — tuning every 30s")
+    print(f"Rotation:       {len(BOT_COMMAND_OPTION_VALUES)} options")
 
-    # pre-cache the slash command so first periodic fires instantly
     if BOT_COMMAND_ENABLED:
-        for guild in client.guilds:
-            ok = await fetch_and_cache_command(guild)
-            if ok:
-                break
+        ch = client.get_channel(CHANNEL_ID)
+        if ch:
+            await fetch_and_cache_command(ch)
 
     for _ in range(5):
         asyncio.create_task(reaction_worker())
@@ -459,7 +464,6 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # LO-only command system — works in any channel
     if message.author.id == LO_USER_ID and message.content.startswith("!"):
         await handle_command(message)
         return

@@ -109,18 +109,16 @@ async def stop_stream(vc):
 
 # ── slash command helpers ────────────────────────
 async def fetch_and_cache_command(guild):
-    """fetch /packs from the guild and cache its id + version"""
     try:
         cmds = await guild.application_commands()
         for cmd in cmds:
-            if (cmd.name.lower() == BOT_COMMAND_NAME.lower() and
-                    getattr(cmd, "application_id", 0) == BOT_ID):
+            if cmd.name.lower() == BOT_COMMAND_NAME.lower():
                 _cached_cmd["id"]             = cmd.id
                 _cached_cmd["version"]        = getattr(cmd, "version", 1)
                 _cached_cmd["application_id"] = cmd.application_id
-                print(f"[cmd] cached /{BOT_COMMAND_NAME} — id={cmd.id}")
+                print(f"[cmd] cached /{BOT_COMMAND_NAME} — id={cmd.id} app={cmd.application_id}")
                 return True
-        print(f"[cmd] /{BOT_COMMAND_NAME} not found for bot {BOT_ID}")
+        print(f"[cmd] /{BOT_COMMAND_NAME} not found in guild")
         return False
     except Exception as e:
         print(f"[cmd] fetch error: {e}")

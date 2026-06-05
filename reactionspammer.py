@@ -16,7 +16,7 @@ SEND_MESSAGES       = False
 SEND_PERIODIC       = True
 REACT_TO_MESSAGES   = False
 STREAMING           = True
-TYPING_ENABLED      = True
+TYPING_ENABLED      = False
 BOT_COMMAND_ENABLED = True
 
 WARNING_PREFIX = "1"

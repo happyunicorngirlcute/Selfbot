@@ -8,14 +8,14 @@ from discord.http import Route
 
 TOKEN = os.environ.get("TOKEN", "your_token_here")
 CHANNEL_ID        = 1516567943859666984
-VOICE_CHANNEL_ID  = 1510047359847895123
+VOICE_CHANNEL_ID  = 1384845703276138547
 TYPING_CHANNEL_ID = 1513603682061779046
 
 REACT_TO_SELF       = False
 SEND_MESSAGES       = False
 SEND_PERIODIC       = False
 REACT_TO_MESSAGES   = False
-STREAMING           = False
+STREAMING           = True
 TYPING_ENABLED      = False
 BOT_COMMAND_ENABLED = False
 

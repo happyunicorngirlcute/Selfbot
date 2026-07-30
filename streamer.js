@@ -32,9 +32,11 @@ function ensureCombinedMedia() {
 const client = new Client();
 const streamer = new Streamer(client);
 
-client.on("ready", async () => {
-    console.log(`[streamer] Logged in as ${client.user.tag}`);
-    ensureCombinedMedia();
+let isConnecting = false;
+
+async function joinAndStream() {
+    if (isConnecting) return;
+    isConnecting = true;
 
     const mediaToStream = fs.existsSync(COMBINED_PATH) ? COMBINED_PATH : GIF_PATH;
 
@@ -42,12 +44,13 @@ client.on("ready", async () => {
         const channel = await client.channels.fetch(VOICE_CHANNEL_ID);
         if (!channel) {
             console.error(`[streamer] Voice channel ${VOICE_CHANNEL_ID} not found.`);
-            process.exit(1);
+            isConnecting = false;
+            return;
         }
 
         console.log(`[streamer] Joining voice channel ${channel.name} (${channel.id})...`);
         await streamer.joinVoice(channel.guild.id, channel.id);
-        console.log("[streamer] Streamer joined voice channel successfully!");
+        console.log("[streamer] Joined voice channel successfully!");
 
         try {
             if (typeof client.signalVideo === "function") {
@@ -55,7 +58,6 @@ client.on("ready", async () => {
             }
         } catch (e) {}
 
-        // Attempt stream playback once cleanly without rapid crash-looping
         try {
             const { output } = prepareStream(mediaToStream, {
                 width: 640,
@@ -67,12 +69,33 @@ client.on("ready", async () => {
         } catch (e) {
             console.log("[streamer] Stream active state maintained.");
         }
-
-        // Keep connection alive stably
-        setInterval(() => {}, 10000);
     } catch (err) {
         console.error("[streamer] Voice connection error:", err.message || err);
+    } finally {
+        isConnecting = false;
     }
+}
+
+client.on("ready", async () => {
+    console.log(`[streamer] Logged in as ${client.user.tag}`);
+    ensureCombinedMedia();
+    await joinAndStream();
+
+    // Auto-reconnect if kicked or disconnected from voice channel
+    client.on("voiceStateUpdate", (oldState, newState) => {
+        if (oldState.id === client.user.id && !newState.channelId) {
+            console.log("[streamer] Kicked or disconnected from voice channel! Auto-reconnecting in 3s...");
+            setTimeout(() => joinAndStream(), 3000);
+        }
+    });
+
+    // Periodic health check every 15s to keep voice connection active
+    setInterval(async () => {
+        if (!streamer.voiceConnection || !streamer.voiceConnection.voiceChannelId) {
+            console.log("[streamer] Connection lost check triggered. Reconnecting to voice channel...");
+            await joinAndStream();
+        }
+    }, 15000);
 });
 
 client.login(TOKEN);

@@ -19,7 +19,7 @@ function ensureCombinedMedia() {
         console.log("[streamer] Combining d.gif + Hava Nagila Original.mp3 into stream_media.mp4...");
         try {
             execSync(
-                `ffmpeg -y -ignore_loop 0 -i "${GIF_PATH}" -i "${AUDIO_PATH}" -map 0:v:0 -map 1:a:0 -vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" -r 30 -c:v libx264 -preset ultrafast -tune zerolatency -c:a aac -b:a 128k -shortest "${COMBINED_PATH}"`,
+                `ffmpeg -y -ignore_loop 0 -i "${GIF_PATH}" -i "${AUDIO_PATH}" -map 0:v:0 -map 1:a:0 -vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p" -r 24 -c:v libx264 -preset superfast -tune zerolatency -b:v 500k -c:a aac -b:a 96k -shortest "${COMBINED_PATH}"`,
                 { stdio: "inherit" }
             );
             console.log("[streamer] Combined media created successfully!");
@@ -51,15 +51,7 @@ client.on("ready", async () => {
         console.log("[streamer] Starting continuous video + audio stream (d.gif + Hava Nagila Original)...");
         while (true) {
             try {
-                const { command, output } = prepareStream(mediaToStream, {
-                    width: 1280,
-                    height: 720,
-                    frameRate: 30,
-                    bitrateVideo: 2000,
-                    bitrateVideoMax: 2500,
-                    hardwareAcceleratedDecoding: false,
-                    videoCodec: "H264"
-                });
+                const { command, output } = prepareStream(mediaToStream);
                 command.on("error", (err) => {
                     console.error("[streamer] FFmpeg error:", err);
                 });

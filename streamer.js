@@ -19,7 +19,7 @@ function ensureCombinedMedia() {
         console.log("[streamer] Combining d.gif + Hava Nagila Original.mp3 into stream_media.mp4...");
         try {
             execSync(
-                `ffmpeg -y -ignore_loop 0 -i "${GIF_PATH}" -i "${AUDIO_PATH}" -map 0:v:0 -map 1:a:0 -vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p" -r 24 -c:v libx264 -preset superfast -tune zerolatency -b:v 500k -c:a aac -b:a 96k -shortest "${COMBINED_PATH}"`,
+                `ffmpeg -y -ignore_loop 0 -i "${GIF_PATH}" -i "${AUDIO_PATH}" -map 0:v:0 -map 1:a:0 -vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p" -r 30 -c:v libx264 -preset superfast -tune zerolatency -c:a libopus -ar 48000 -ac 2 -b:a 128k -movflags +faststart -shortest "${COMBINED_PATH}"`,
                 { stdio: "inherit" }
             );
             console.log("[streamer] Combined media created successfully!");

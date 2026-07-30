@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --production
+RUN npm install --omit=dev --legacy-peer-deps
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

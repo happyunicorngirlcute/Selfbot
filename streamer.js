@@ -12,23 +12,23 @@ const VOICE_CHANNEL_ID = process.env.VOICE_CHANNEL_ID || "1412501158689247273";
 
 const GIF_PATH = path.join(__dirname, "d.gif");
 const AUDIO_PATH = path.join(__dirname, "Hava Nagila Original.mp3");
-const COMBINED_PATH = path.join(__dirname, "stream_media.mkv");
+const COMBINED_PATH = path.join(__dirname, "stream_media.mp4");
 
 function ensureCombinedMedia() {
     if (!fs.existsSync(COMBINED_PATH)) {
-        console.log("[streamer] Combining d.gif + Hava Nagila Original.mp3 into stream_media.mkv...");
+        console.log("[streamer] Combining d.gif + Hava Nagila Original.mp3 into stream_media.mp4...");
         try {
             execSync(
                 `ffmpeg -y -ignore_loop 0 -i "${GIF_PATH}" -i "${AUDIO_PATH}" ` +
                 `-map 0:v:0 -map 1:a:0 ` +
-                `-vf "scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2,format=yuv420p" ` +
-                `-r 20 -c:v libx264 -preset ultrafast -tune zerolatency ` +
-                `-bf 0 -g 20 ` +
-                `-c:a libopus -ar 48000 -ac 2 -b:a 64k ` +
-                `-shortest "${COMBINED_PATH}"`,
+                `-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p" ` +
+                `-r 30 -c:v libx264 -preset ultrafast -tune zerolatency ` +
+                `-bf 0 -g 30 ` +
+                `-c:a libopus -ar 48000 -ac 2 -b:a 128k ` +
+                `-movflags +faststart -shortest "${COMBINED_PATH}"`,
                 { stdio: "inherit" }
             );
-            console.log("[streamer] Combined MKV media created successfully!");
+            console.log("[streamer] Combined media created successfully!");
         } catch (e) {
             console.error("[streamer] Failed to combine media with ffmpeg:", e);
         }
@@ -62,8 +62,32 @@ client.on("ready", async () => {
         while (true) {
             try {
                 const { command, output } = prepareStream(mediaToStream, {
-                    noTranscoding: true,
+                    width: 640,
+                    height: 360,
+                    frameRate: 30,
+                    bitrateVideo: 800,
+                    bitrateVideoMax: 1200,
+                    includeAudio: true,
+                    noTranscoding: false,
                 });
+
+                // Patch fluent-ffmpeg command to strip broken azmq filter syntax for FFmpeg 7
+                if (command && command._outputs && command._outputs[0] && command._outputs[0].audioFilters) {
+                    try {
+                        const filters = command._outputs[0].audioFilters.get();
+                        command._outputs[0].audioFilters.clear();
+                        filters.forEach((f) => {
+                            if (typeof f === "string") {
+                                const cleaned = f.split(",").filter((item) => !item.trim().startsWith("azmq=")).join(",");
+                                if (cleaned) command._outputs[0].audioFilters.add(cleaned);
+                            }
+                        });
+                        console.log("[streamer] Audio filters cleaned for FFmpeg 7:", command._outputs[0].audioFilters.get());
+                    } catch (e) {
+                        console.log("[streamer] Filter patch note:", e.message);
+                    }
+                }
+
                 command.on("error", (err) => {
                     if (err.message && !err.message.includes("Output stream closed")) {
                         console.error("[streamer] FFmpeg error:", err.message);

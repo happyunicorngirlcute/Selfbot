@@ -67,7 +67,7 @@ client.on("ready", async () => {
                     frameRate: 30,
                     bitrateVideo: 800,
                     bitrateVideoMax: 1200,
-                    includeAudio: true,
+                    includeAudio: false,
                     noTranscoding: false,
                 });
 

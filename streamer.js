@@ -18,8 +18,19 @@ function ensureCombinedMedia() {
     if (!fs.existsSync(COMBINED_PATH)) {
         console.log("[streamer] Combining d.gif + Hava Nagila Original.mp3 into stream_media.mp4...");
         try {
+            // Pre-encode with discord-compatible settings:
+            // - H264 Constrained Baseline (no B-frames via -bf 0)
+            // - Keyframe every 1 second (-g 30 at 30fps)
+            // - Opus 48kHz stereo audio (Discord native)
+            // - faststart for instant header access
             execSync(
-                `ffmpeg -y -ignore_loop 0 -i "${GIF_PATH}" -i "${AUDIO_PATH}" -map 0:v:0 -map 1:a:0 -vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p" -r 30 -c:v libx264 -preset superfast -tune zerolatency -c:a libopus -ar 48000 -ac 2 -b:a 128k -movflags +faststart -shortest "${COMBINED_PATH}"`,
+                `ffmpeg -y -ignore_loop 0 -i "${GIF_PATH}" -i "${AUDIO_PATH}" ` +
+                `-map 0:v:0 -map 1:a:0 ` +
+                `-vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" ` +
+                `-r 30 -c:v libx264 -preset superfast -tune zerolatency ` +
+                `-bf 0 -g 30 -keyint_min 30 ` +
+                `-c:a libopus -ar 48000 -ac 2 -b:a 128k ` +
+                `-movflags +faststart -shortest "${COMBINED_PATH}"`,
                 { stdio: "inherit" }
             );
             console.log("[streamer] Combined media created successfully!");
@@ -39,27 +50,6 @@ client.on("ready", async () => {
     const mediaToStream = fs.existsSync(COMBINED_PATH) ? COMBINED_PATH : GIF_PATH;
     console.log(`[streamer] Media file: ${mediaToStream} (${fs.statSync(mediaToStream).size} bytes)`);
 
-    // Verify the media file is valid
-    try {
-        const probe = execSync(`ffprobe -v error -show_format -show_streams -of json "${mediaToStream}"`, { encoding: "utf8" });
-        const info = JSON.parse(probe);
-        console.log("[streamer] Media info:", JSON.stringify({
-            format: info.format.format_name,
-            duration: info.format.duration,
-            streams: info.streams.map(s => ({ codec_name: s.codec_name, codec_type: s.codec_type, width: s.width, height: s.height, sample_rate: s.sample_rate }))
-        }));
-    } catch (e) {
-        console.error("[streamer] ffprobe failed:", e.message);
-    }
-
-    // Check if zmq is available in ffmpeg
-    try {
-        const zmqCheck = execSync("ffmpeg -protocols 2>&1 | grep zmq || echo 'ZMQ NOT FOUND'", { encoding: "utf8" });
-        console.log("[streamer] ZMQ protocol support:", zmqCheck.trim());
-    } catch (e) {
-        console.log("[streamer] ZMQ check failed:", e.message);
-    }
-
     try {
         const channel = await client.channels.fetch(VOICE_CHANNEL_ID);
         if (!channel) {
@@ -76,49 +66,24 @@ client.on("ready", async () => {
         console.log("[streamer] Starting continuous video + audio stream...");
         while (true) {
             try {
-                console.log("[streamer] Calling prepareStream...");
-                const { command, output, promise } = prepareStream(mediaToStream);
-                
-                // Log FFmpeg command line
-                command.once("start", (cmdline) => {
-                    console.log("[streamer] FFmpeg command:", cmdline);
+                // Use noTranscoding: true because our file is already
+                // pre-encoded with the exact specs Discord needs:
+                // H264 (no B-frames, keyframe every 1s) + Opus 48kHz
+                // This avoids the encoding delay that kills the demuxer
+                const { command, output } = prepareStream(mediaToStream, {
+                    noTranscoding: true,
                 });
                 command.on("error", (err) => {
-                    console.error("[streamer] FFmpeg command error:", err.message);
-                });
-                
-                // Monitor the output stream
-                let bytesReceived = 0;
-                output.on("data", (chunk) => {
-                    bytesReceived += chunk.length;
-                    if (bytesReceived <= 1024 || bytesReceived % (1024 * 100) < 1024) {
-                        console.log(`[streamer] Output stream received ${bytesReceived} bytes total`);
+                    if (err.message && !err.message.includes("Output stream closed")) {
+                        console.error("[streamer] FFmpeg error:", err.message);
                     }
                 });
-                output.on("error", (err) => {
-                    console.error("[streamer] Output stream error:", err.message, err.stack);
-                });
-                output.on("end", () => {
-                    console.log(`[streamer] Output stream ended. Total bytes: ${bytesReceived}`);
-                });
-                output.on("close", () => {
-                    console.log(`[streamer] Output stream closed. Total bytes: ${bytesReceived}`);
-                });
-
-                // Monitor the promise from prepareStream
-                promise.then(() => {
-                    console.log("[streamer] prepareStream promise resolved");
-                }).catch((err) => {
-                    console.error("[streamer] prepareStream promise rejected:", err?.message || err);
-                });
-
-                console.log("[streamer] Calling playStream...");
+                console.log("[streamer] Playing stream...");
                 await playStream(output, streamer);
                 console.log("[streamer] Stream loop completed. Restarting...");
-                await new Promise((resolve) => setTimeout(resolve, 2000));
+                await new Promise((resolve) => setTimeout(resolve, 1000));
             } catch (err) {
-                console.error("[streamer] Error in stream loop:", err?.message || err);
-                if (err?.stack) console.error("[streamer] Stack:", err.stack);
+                console.error("[streamer] Error playing stream:", err?.message || err);
                 await new Promise((resolve) => setTimeout(resolve, 5000));
             }
         }

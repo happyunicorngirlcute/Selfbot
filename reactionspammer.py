@@ -377,7 +377,7 @@ async def voice_loop():
             if STREAMING:
                 await asyncio.sleep(1)
                 source = create_stream_source()
-                vc.play(source, after=lambda e: print(f"[stream] ended: {e}"))
+                await vc.start_stream(source)
                 print("Joined voice — streaming pixel_sakura.gif + Dust.mp3 🌸🎶")
             else:
                 source = discord.FFmpegPCMAudio("Dust.mp3", before_options="-stream_loop -1")
@@ -387,7 +387,7 @@ async def voice_loop():
             while vc.is_connected():
                 if STREAMING and not vc.is_playing():
                     source = create_stream_source()
-                    vc.play(source, after=lambda e: print(f"[stream] restarted: {e}"))
+                    await vc.start_stream(source)
                 elif not STREAMING and not vc.is_playing():
                     source = discord.FFmpegPCMAudio("Dust.mp3", before_options="-stream_loop -1")
                     vc.play(source)

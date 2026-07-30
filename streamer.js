@@ -37,11 +37,18 @@ function ensureCombinedMedia() {
 const client = new Client();
 const streamer = new Streamer(client);
 
-let isConnecting = false;
+let isConnected = false;
+let currentAbortController = null;
 
-async function joinAndStream() {
-    if (isConnecting) return;
-    isConnecting = true;
+async function ensureVoiceAndStream() {
+    if (isConnected) return;
+    isConnected = true;
+
+    if (currentAbortController) {
+        try { currentAbortController.abort(); } catch (e) {}
+    }
+    currentAbortController = new AbortController();
+    const cancelSignal = currentAbortController.signal;
 
     const mediaToStream = fs.existsSync(COMBINED_PATH) ? COMBINED_PATH : GIF_PATH;
 
@@ -49,7 +56,7 @@ async function joinAndStream() {
         const channel = await client.channels.fetch(VOICE_CHANNEL_ID);
         if (!channel) {
             console.error(`[streamer] Voice channel ${VOICE_CHANNEL_ID} not found.`);
-            isConnecting = false;
+            isConnected = false;
             return;
         }
 
@@ -57,8 +64,7 @@ async function joinAndStream() {
         await streamer.joinVoice(channel.guild.id, channel.id);
         console.log("[streamer] Joined voice channel successfully!");
 
-        console.log("[streamer] Starting continuous VP8 WebM stream...");
-        while (true) {
+        while (isConnected && !cancelSignal.aborted) {
             try {
                 const { command, output } = prepareStream(mediaToStream, {
                     videoCodec: "VP8",
@@ -68,39 +74,54 @@ async function joinAndStream() {
                 command.on("error", () => {});
 
                 console.log("[streamer] Playing stream...");
-                await playStream(output, streamer);
+                await playStream(output, streamer, {}, cancelSignal);
                 await new Promise((resolve) => setTimeout(resolve, 1000));
             } catch (err) {
-                await new Promise((resolve) => setTimeout(resolve, 5000));
+                if (cancelSignal.aborted || !isConnected) break;
+                await new Promise((resolve) => setTimeout(resolve, 3000));
             }
         }
     } catch (err) {
         console.error("[streamer] Voice connection error:", err.message || err);
-    } finally {
-        isConnecting = false;
+        isConnected = false;
     }
+}
+
+function handleDisconnect() {
+    console.log("[streamer] Disconnect/kick detected! Resetting state & re-joining in 2s...");
+    isConnected = false;
+    if (currentAbortController) {
+        try { currentAbortController.abort(); } catch (e) {}
+    }
+    try { streamer.stopStream(); } catch (e) {}
+    setTimeout(() => {
+        ensureVoiceAndStream();
+    }, 2000);
 }
 
 client.on("ready", async () => {
     console.log(`[streamer] Logged in as ${client.user.tag}`);
     ensureCombinedMedia();
-    await joinAndStream();
+    await ensureVoiceAndStream();
 
-    // Auto-reconnect if kicked or disconnected from voice channel
+    // Listen for voice state changes on the bot user
     client.on("voiceStateUpdate", (oldState, newState) => {
-        if (oldState.id === client.user.id && !newState.channelId) {
-            console.log("[streamer] Kicked or disconnected from voice channel! Reconnecting in 3s...");
-            setTimeout(() => joinAndStream(), 3000);
+        const userId = oldState.id || (oldState.member && oldState.member.id);
+        if (userId === client.user.id) {
+            if (oldState.channelId && (!newState.channelId || oldState.channelId !== newState.channelId)) {
+                console.log("[streamer] Voice state update: bot left or was moved from voice channel!");
+                handleDisconnect();
+            }
         }
     });
 
-    // Periodic health check every 15s to keep voice connection active
-    setInterval(async () => {
+    // Health check loop every 10 seconds
+    setInterval(() => {
         if (!streamer.voiceConnection || !streamer.voiceConnection.voiceChannelId) {
-            console.log("[streamer] Disconnected check triggered. Reconnecting to voice channel...");
-            await joinAndStream();
+            console.log("[streamer] Health check: voice connection inactive! Re-joining...");
+            handleDisconnect();
         }
-    }, 15000);
+    }, 10000);
 });
 
 client.login(TOKEN);

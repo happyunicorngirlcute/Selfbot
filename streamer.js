@@ -1,12 +1,13 @@
+const path = require("path");
+process.env.FFMPEG_PATH = path.join(__dirname, "ffmpeg_wrapper.sh");
+
 const WebSocket = require("ws");
 global.WebSocket = WebSocket;
 
 const { Client } = require("discord.js-selfbot-v13");
-const { Streamer, playStream } = require("@dank074/discord-video-stream");
-const { spawn, execSync } = require("child_process");
-const { PassThrough } = require("stream");
+const { Streamer, prepareStream, playStream } = require("@dank074/discord-video-stream");
+const { execSync } = require("child_process");
 const fs = require("fs");
-const path = require("path");
 
 const TOKEN = process.env.TOKEN || "your_token_here";
 const VOICE_CHANNEL_ID = process.env.VOICE_CHANNEL_ID || "1412501158689247273";
@@ -58,53 +59,32 @@ client.on("ready", async () => {
         await new Promise((resolve) => setTimeout(resolve, 3000));
         console.log("[streamer] Voice connection ready.");
 
-        console.log("[streamer] Starting continuous H264 video + Opus audio stream...");
+        console.log("[streamer] Starting continuous video + audio stream (d.gif + Hava Nagila Original)...");
         while (true) {
-            let ffmpegProc = null;
             try {
-                const streamPipe = new PassThrough();
-                
-                ffmpegProc = spawn("ffmpeg", [
-                    "-re",
-                    "-i", mediaToStream,
-                    "-map", "0:v:0",
-                    "-map", "0:a:0",
-                    "-c:v", "libx264",
-                    "-preset", "ultrafast",
-                    "-tune", "zerolatency",
-                    "-vf", "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-                    "-r", "30",
-                    "-g", "30",
-                    "-bf", "0",
-                    "-c:a", "libopus",
-                    "-ar", "48000",
-                    "-ac", "2",
-                    "-b:a", "128k",
-                    "-f", "nut",
-                    "pipe:1"
-                ]);
+                const { command, output } = prepareStream(mediaToStream, {
+                    width: 640,
+                    height: 360,
+                    frameRate: 30,
+                    bitrateVideo: 800,
+                    bitrateVideoMax: 1200,
+                    videoCodec: "H264",
+                    includeAudio: true,
+                    noTranscoding: false,
+                });
 
-                ffmpegProc.stdout.pipe(streamPipe);
-
-                ffmpegProc.stderr.on("data", (data) => {
-                    const msg = data.toString();
-                    if (msg.includes("Error") || msg.includes("error") || msg.includes("Fatal")) {
-                        console.log("[ffmpeg-stderr]", msg.trim());
+                command.on("error", (err) => {
+                    if (err.message && !err.message.includes("Output stream closed")) {
+                        console.error("[streamer] FFmpeg error:", err.message);
                     }
                 });
 
-                // Pre-buffer 1500ms of encoded frames so node-av demuxer never starves
-                await new Promise((resolve) => setTimeout(resolve, 1500));
-
                 console.log("[streamer] Playing stream...");
-                await playStream(streamPipe, streamer);
-                console.log("[streamer] Stream completed. Looping...");
+                await playStream(output, streamer);
+                console.log("[streamer] Stream loop completed. Restarting...");
                 await new Promise((resolve) => setTimeout(resolve, 1000));
             } catch (err) {
-                console.error("[streamer] Stream playback error:", err?.message || err);
-                if (ffmpegProc) {
-                    try { ffmpegProc.kill("SIGKILL"); } catch {}
-                }
+                console.error("[streamer] Error playing stream:", err?.message || err);
                 await new Promise((resolve) => setTimeout(resolve, 3000));
             }
         }

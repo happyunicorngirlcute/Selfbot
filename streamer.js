@@ -1,3 +1,6 @@
+const WebSocket = require("ws");
+global.WebSocket = WebSocket;
+
 const { Client } = require("discord.js-selfbot-v13");
 const { Streamer, playStream } = require("@dank074/discord-video-stream");
 const { execSync } = require("child_process");

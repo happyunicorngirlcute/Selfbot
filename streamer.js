@@ -2,7 +2,7 @@ const WebSocket = require("ws");
 global.WebSocket = WebSocket;
 
 const { Client } = require("discord.js-selfbot-v13");
-const { Streamer, playStream } = require("@dank074/discord-video-stream");
+const { Streamer, prepareStream, playStream } = require("@dank074/discord-video-stream");
 const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -51,7 +51,10 @@ client.on("ready", async () => {
         console.log("[streamer] Starting continuous video + audio stream (d.gif + Hava Nagila Original)...");
         while (true) {
             try {
-                await playStream(mediaToStream, streamer);
+                console.log("[streamer] Preparing stream...");
+                const videoStream = await prepareStream(mediaToStream);
+                console.log("[streamer] Playing stream...");
+                await playStream(videoStream, streamer);
                 console.log("[streamer] Stream loop completed. Restarting stream...");
             } catch (err) {
                 console.error("[streamer] Error playing stream:", err);

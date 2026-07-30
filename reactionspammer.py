@@ -25,7 +25,6 @@ PERIODIC_MESSAGE     = "/packs"
 BOT_COMMAND_NAME     = "packs"
 BOT_COMMAND_OPTION_NAME = "type"
 
-# rotates in order forever: HL Alyx → Series 1 → Series 2 → Series 3 → HL Alyx → ...
 BOT_COMMAND_OPTION_VALUES = [
     "Half-Life: Alyx Collectible Pins Capsule",
     "Collectible Pins Capsule Series 1",
@@ -44,6 +43,9 @@ RPC_APP_ID = "1498601983865651220"
 RPC_NAME   = "Nord VPN"
 RPC_DETAIL = "VPN 94.42.40.103"
 RPC_STATE  = "REAL 89.90.119.186"
+
+# Fixed timestamp generated once at startup so elapsed time persists continuously
+RPC_START_TIME = int(time.time() * 1000)
 
 adaptive = {
     "react_sleep":   0.35,
@@ -115,7 +117,6 @@ async def stop_stream(vc):
 
 # ── slash command helpers ────────────────────────
 async def fetch_and_cache_command(channel):
-    """uses the channel search endpoint — same one Discord hits when you type /"""
     try:
         data = await client.http.request(
             Route("GET", f"/channels/{channel.id}/application-commands/search"),
@@ -299,7 +300,7 @@ async def set_rpc():
                 "name": RPC_NAME, "type": 0,
                 "application_id": RPC_APP_ID,
                 "details": RPC_DETAIL, "state": RPC_STATE,
-                "timestamps": {"start": int(time.time() * 1000)}
+                "timestamps": {"start": RPC_START_TIME}
             }]
         }
     }

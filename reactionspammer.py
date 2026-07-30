@@ -3,7 +3,6 @@ import asyncio
 import random
 import os
 import time
-import subprocess
 from discord.http import Route
 
 TOKEN = os.environ.get("TOKEN", "your_token_here")
@@ -73,47 +72,14 @@ def rebuild_semaphore(new_count):
 client = discord.Client()
 queue  = asyncio.Queue()
 
-# ── FFmpeg silence ───────────────────────────────
-class FFmpegSilenceAudio(discord.AudioSource):
-    def __init__(self):
-        self._process = None
-        self._process = subprocess.Popen(
-            ["ffmpeg", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
-             "-ar", "48000", "-ac", "2", "-f", "s16le", "-loglevel", "quiet", "pipe:1"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-        )
-
-    def read(self) -> bytes:
-        return self._process.stdout.read(3840)
-
-    def cleanup(self):
-        if self._process:
-            self._process.kill()
-            self._process.wait()
-
-# ── stream helpers ───────────────────────────────
-async def start_stream(vc):
-    try:
-        await client.ws.send_as_json({
-            "op": 18,
-            "d": {"type": "guild", "guild_id": str(vc.guild.id),
-                  "channel_id": str(VOICE_CHANNEL_ID), "preferred_region": "us-east"}
-        })
-        print("[stream] LIVE payload sent")
-    except Exception as e:
-        print(f"[stream] start error: {e}")
-
-async def stop_stream(vc):
-    try:
-        if vc.is_playing():
-            vc.stop()
-        await client.ws.send_as_json({
-            "op": 18,
-            "d": {"type": "guild", "guild_id": str(vc.guild.id), "channel_id": None}
-        })
-        print("[stream] stopped")
-    except Exception as e:
-        print(f"[stream] stop error: {e}")
+# ── stream source builder ────────────────────────
+def create_stream_source():
+    """Builds a WebRTC stream source combining pixel_sakura.gif and Dust.mp3."""
+    return discord.FFmpegVideoAudio(
+        "pixel_sakura.gif",
+        before_options="-stream_loop -1",
+        options="-stream_loop -1 -i Dust.mp3 -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -r 30 -b:v 2000k"
+    )
 
 # ── slash command helpers ────────────────────────
 async def fetch_and_cache_command(channel):
@@ -407,29 +373,27 @@ async def voice_loop():
 
             print(f"Joining voice {VOICE_CHANNEL_ID}")
             vc = await channel.connect(self_deaf=False, self_mute=False)
-            await client.ws.voice_state(
-                vc.guild.id, VOICE_CHANNEL_ID,
-                self_mute=False, self_deaf=False,
-            )
 
             if STREAMING:
                 await asyncio.sleep(1)
-                source = FFmpegSilenceAudio()
-                vc.play(source, after=lambda e: print(f"[stream] audio ended: {e}"))
-                await start_stream(vc)
-                print("Joined voice — streaming silence 🇮🇱")
+                source = create_stream_source()
+                vc.play(source, after=lambda e: print(f"[stream] ended: {e}"))
+                print("Joined voice — streaming pixel_sakura.gif + Dust.mp3 🌸🎶")
             else:
-                print("Joined voice — farming XP 🇮🇱")
+                source = discord.FFmpegPCMAudio("Dust.mp3", before_options="-stream_loop -1")
+                vc.play(source, after=lambda e: print(f"[audio] ended: {e}"))
+                print("Joined voice — playing Dust.mp3 🎶")
 
             while vc.is_connected():
                 if STREAMING and not vc.is_playing():
-                    source = FFmpegSilenceAudio()
+                    source = create_stream_source()
                     vc.play(source, after=lambda e: print(f"[stream] restarted: {e}"))
+                elif not STREAMING and not vc.is_playing():
+                    source = discord.FFmpegPCMAudio("Dust.mp3", before_options="-stream_loop -1")
+                    vc.play(source)
                 await asyncio.sleep(10)
 
             print("Voice dropped — rejoining...")
-            if STREAMING:
-                await stop_stream(vc)
 
         except discord.errors.ClientException as e:
             print(f"Voice client error: {e} — retrying in 10s")
@@ -445,7 +409,7 @@ async def on_ready():
     print(f"Warning pings:  {'ON' if SEND_MESSAGES else 'OFF'}")
     print(f"Periodic spam:  {'ON' if SEND_PERIODIC else 'OFF'}")
     print(f"Bot command:    {'ON — slash interaction' if BOT_COMMAND_ENABLED else 'OFF — plain text'}")
-    print(f"Streaming:      {'ON — FFmpeg stream' if STREAMING else 'OFF'}")
+    print(f"Streaming:      {'ON — WebRTC stream (pixel_sakura.gif + Dust.mp3)' if STREAMING else 'OFF'}")
     print(f"Typing loop:    {'ON' if TYPING_ENABLED else 'OFF'}")
     print(f"Adaptive:       ON — tuning every 30s")
     print(f"Rotation:       {len(BOT_COMMAND_OPTION_VALUES)} options")

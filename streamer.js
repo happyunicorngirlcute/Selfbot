@@ -71,21 +71,12 @@ client.on("ready", async () => {
                     noTranscoding: false,
                 });
 
-                // Patch fluent-ffmpeg command to strip broken azmq filter syntax for FFmpeg 7
-                if (command && command._outputs && command._outputs[0] && command._outputs[0].audioFilters) {
-                    try {
-                        const filters = command._outputs[0].audioFilters.get();
-                        command._outputs[0].audioFilters.clear();
-                        filters.forEach((f) => {
-                            if (typeof f === "string") {
-                                const cleaned = f.split(",").filter((item) => !item.trim().startsWith("azmq=")).join(",");
-                                if (cleaned) command._outputs[0].audioFilters.add(cleaned);
-                            }
-                        });
-                        console.log("[streamer] Audio filters cleaned for FFmpeg 7:", command._outputs[0].audioFilters.get());
-                    } catch (e) {
-                        console.log("[streamer] Filter patch note:", e.message);
-                    }
+                // Patch fluent-ffmpeg-simplified command to strip broken azmq filter for FFmpeg 7
+                if (command && command._outputs && command._outputs[0] && command._outputs[0].audio && Array.isArray(command._outputs[0].audio.filters)) {
+                    command._outputs[0].audio.filters = command._outputs[0].audio.filters.filter(
+                        (f) => typeof f !== "string" || !f.includes("azmq=")
+                    );
+                    console.log("[streamer] Audio filters cleaned for FFmpeg 7:", command._outputs[0].audio.filters);
                 }
 
                 command.on("error", (err) => {

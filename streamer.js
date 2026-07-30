@@ -47,19 +47,32 @@ client.on("ready", async () => {
 
         console.log(`[streamer] Joining voice channel ${channel.name} (${channel.id})...`);
         await streamer.joinVoice(channel.guild.id, channel.id);
+        console.log("[streamer] Waiting for WebRTC socket handshake...");
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
+        try {
+            if (typeof client.signalVideo === "function") {
+                await client.signalVideo(channel.guild.id, channel.id, true);
+            }
+        } catch (e) {
+            console.log("[streamer] signalVideo state:", e.message);
+        }
 
         console.log("[streamer] Starting continuous video + audio stream (d.gif + Hava Nagila Original)...");
         while (true) {
             try {
                 const { command, output } = prepareStream(mediaToStream);
                 command.on("error", (err) => {
-                    console.error("[streamer] FFmpeg error:", err);
+                    if (err.message && !err.message.includes("Output stream closed")) {
+                        console.error("[streamer] FFmpeg error:", err.message);
+                    }
                 });
                 console.log("[streamer] Playing stream...");
                 await playStream(output, streamer);
                 console.log("[streamer] Stream loop completed. Restarting...");
+                await new Promise((resolve) => setTimeout(resolve, 1000));
             } catch (err) {
-                console.error("[streamer] Error playing stream:", err);
+                console.error("[streamer] Error playing stream:", err.message || err);
                 await new Promise((resolve) => setTimeout(resolve, 3000));
             }
         }

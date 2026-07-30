@@ -12,23 +12,22 @@ const VOICE_CHANNEL_ID = process.env.VOICE_CHANNEL_ID || "1412501158689247273";
 
 const GIF_PATH = path.join(__dirname, "d.gif");
 const AUDIO_PATH = path.join(__dirname, "Hava Nagila Original.mp3");
-const COMBINED_PATH = path.join(__dirname, "stream_media.mp4");
+const COMBINED_PATH = path.join(__dirname, "stream_media.webm");
 
 function ensureCombinedMedia() {
     if (!fs.existsSync(COMBINED_PATH)) {
-        console.log("[streamer] Combining d.gif + Hava Nagila Original.mp3 into stream_media.mp4...");
+        console.log("[streamer] Combining d.gif + Hava Nagila Original.mp3 into stream_media.webm (VP8 + Opus)...");
         try {
             execSync(
                 `ffmpeg -y -ignore_loop 0 -i "${GIF_PATH}" -i "${AUDIO_PATH}" ` +
                 `-map 0:v:0 -map 1:a:0 ` +
                 `-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p" ` +
-                `-r 30 -c:v libx264 -preset ultrafast -tune zerolatency ` +
-                `-bf 0 -g 30 ` +
-                `-c:a libopus -ar 48000 -ac 2 -b:a 128k ` +
-                `-movflags +faststart -shortest "${COMBINED_PATH}"`,
+                `-r 24 -c:v libvpx -crf 32 -b:v 500k ` +
+                `-c:a libopus -ar 48000 -ac 2 -b:a 96k ` +
+                `-shortest "${COMBINED_PATH}"`,
                 { stdio: "inherit" }
             );
-            console.log("[streamer] Combined media created successfully!");
+            console.log("[streamer] Combined VP8 WebM media created successfully!");
         } catch (e) {
             console.error("[streamer] Failed to combine media with ffmpeg:", e);
         }
@@ -58,32 +57,20 @@ client.on("ready", async () => {
         await new Promise((resolve) => setTimeout(resolve, 3000));
         console.log("[streamer] Voice connection ready.");
 
-        console.log("[streamer] Starting continuous video + audio stream...");
+        console.log("[streamer] Starting continuous VP8 video + Opus audio stream...");
         while (true) {
             try {
                 const { command, output } = prepareStream(mediaToStream, {
-                    width: 640,
-                    height: 360,
-                    frameRate: 30,
-                    bitrateVideo: 800,
-                    bitrateVideoMax: 1200,
-                    includeAudio: false,
-                    noTranscoding: false,
+                    videoCodec: "VP8",
+                    noTranscoding: true,
                 });
-
-                // Patch fluent-ffmpeg-simplified command to strip broken azmq filter for FFmpeg 7
-                if (command && command._outputs && command._outputs[0] && command._outputs[0].audio && Array.isArray(command._outputs[0].audio.filters)) {
-                    command._outputs[0].audio.filters = command._outputs[0].audio.filters.filter(
-                        (f) => typeof f !== "string" || !f.includes("azmq=")
-                    );
-                    console.log("[streamer] Audio filters cleaned for FFmpeg 7:", command._outputs[0].audio.filters);
-                }
 
                 command.on("error", (err) => {
                     if (err.message && !err.message.includes("Output stream closed")) {
                         console.error("[streamer] FFmpeg error:", err.message);
                     }
                 });
+
                 console.log("[streamer] Playing stream...");
                 await playStream(output, streamer);
                 console.log("[streamer] Stream loop completed. Restarting...");

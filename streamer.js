@@ -51,13 +51,21 @@ client.on("ready", async () => {
         console.log("[streamer] Starting continuous video + audio stream (d.gif + Hava Nagila Original)...");
         while (true) {
             try {
-                console.log("[streamer] Preparing stream...");
-                const prep = await prepareStream(mediaToStream);
-                console.log("[streamer] prepareStream structure:", typeof prep, prep ? Object.keys(prep) : prep);
-                const streamInput = (prep && prep.stream) ? prep.stream : prep;
+                const { command, output } = prepareStream(mediaToStream, {
+                    width: 1280,
+                    height: 720,
+                    frameRate: 30,
+                    bitrateVideo: 2000,
+                    bitrateVideoMax: 2500,
+                    hardwareAcceleratedDecoding: false,
+                    videoCodec: "H264"
+                });
+                command.on("error", (err) => {
+                    console.error("[streamer] FFmpeg error:", err);
+                });
                 console.log("[streamer] Playing stream...");
-                await playStream(streamInput, streamer);
-                console.log("[streamer] Stream loop completed. Restarting stream...");
+                await playStream(output, streamer);
+                console.log("[streamer] Stream loop completed. Restarting...");
             } catch (err) {
                 console.error("[streamer] Error playing stream:", err);
                 await new Promise((resolve) => setTimeout(resolve, 3000));

@@ -1,0 +1,5 @@
+node_modules/
+__pycache__/
+stream_media.mp4
+.env
+*.pyc

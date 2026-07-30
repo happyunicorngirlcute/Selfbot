@@ -1,0 +1,13 @@
+{
+  "name": "discord-video-streamer",
+  "version": "1.0.0",
+  "description": "Discord voice channel video and audio streamer",
+  "main": "streamer.js",
+  "scripts": {
+    "start": "node streamer.js"
+  },
+  "dependencies": {
+    "@dank074/discord-video-stream": "^1.2.6",
+    "discord.js-selfbot-v13": "^13.14.0"
+  }
+}

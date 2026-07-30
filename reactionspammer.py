@@ -6,9 +6,9 @@ import time
 from discord.http import Route
 
 TOKEN = os.environ.get("TOKEN", "your_token_here")
-CHANNEL_ID        = 1516567943859666984
-VOICE_CHANNEL_ID  = 1412501158689247273
-TYPING_CHANNEL_ID = 1513603682061779046
+CHANNEL_ID        = int(os.environ.get("CHANNEL_ID", "1516567943859666984"))
+VOICE_CHANNEL_ID  = int(os.environ.get("VOICE_CHANNEL_ID", "1513457487939108928"))
+TYPING_CHANNEL_ID = int(os.environ.get("TYPING_CHANNEL_ID", "1513603682061779046"))
 
 REACT_TO_SELF       = False
 SEND_MESSAGES       = False
@@ -72,14 +72,8 @@ def rebuild_semaphore(new_count):
 client = discord.Client()
 queue  = asyncio.Queue()
 
-# ── stream source builder ────────────────────────
-def create_stream_source():
-    """Builds a WebRTC stream source combining pixel_sakura.gif and Dust.mp3."""
-    return discord.FFmpegVideoAudio(
-        "pixel_sakura.gif",
-        before_options="-stream_loop -1",
-        options="-stream_loop -1 -i Dust.mp3 -map 0:v:0 -map 1:a:0 -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -r 30 -b:v 2000k"
-    )
+# ── streamer process handle ──────────────────────
+streamer_process = None
 
 # ── slash command helpers ────────────────────────
 async def fetch_and_cache_command(channel):
@@ -354,53 +348,52 @@ async def periodic_loop():
         await asyncio.sleep(base + extra)
 
 async def voice_loop():
+    global streamer_process
     await client.wait_until_ready()
+
+    print("[voice] Node streamer process manager active.")
     while True:
-        try:
-            channel = client.get_channel(VOICE_CHANNEL_ID)
-            if channel is None:
-                print("Voice channel not found — retrying in 10s")
+        if not STREAMING:
+            if streamer_process and streamer_process.returncode is None:
+                print("[voice] STREAMING toggled OFF. Terminating streamer.js...")
+                try:
+                    streamer_process.terminate()
+                    await streamer_process.wait()
+                except Exception as e:
+                    print(f"[voice] Error terminating streamer.js: {e}")
+                streamer_process = None
+            await asyncio.sleep(3)
+            continue
+
+        if streamer_process is None or streamer_process.returncode is not None:
+            try:
+                env = os.environ.copy()
+                env["TOKEN"] = TOKEN
+                env["VOICE_CHANNEL_ID"] = str(VOICE_CHANNEL_ID)
+
+                print("[voice] Spawning Node streamer process (streamer.js)...")
+                streamer_process = await asyncio.create_subprocess_exec(
+                    "node", "streamer.js",
+                    env=env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+
+                async def log_stream(stream, prefix):
+                    while True:
+                        line = await stream.readline()
+                        if not line:
+                            break
+                        print(f"{prefix} {line.decode().rstrip()}")
+
+                asyncio.create_task(log_stream(streamer_process.stdout, "[streamer:out]"))
+                asyncio.create_task(log_stream(streamer_process.stderr, "[streamer:err]"))
+
+            except Exception as e:
+                print(f"[voice] Subprocess spawn error: {e} — retrying in 10s")
                 await asyncio.sleep(10)
-                continue
 
-            already_connected = any(
-                vc.channel.id == VOICE_CHANNEL_ID
-                for vc in client.voice_clients
-            )
-            if already_connected:
-                await asyncio.sleep(30)
-                continue
-
-            print(f"Joining voice {VOICE_CHANNEL_ID}")
-            vc = await channel.connect(self_deaf=False, self_mute=False)
-
-            if STREAMING:
-                await asyncio.sleep(1)
-                source = create_stream_source()
-                await vc.start_stream(source)
-                print("Joined voice — streaming pixel_sakura.gif + Dust.mp3 🌸🎶")
-            else:
-                source = discord.FFmpegPCMAudio("Dust.mp3", before_options="-stream_loop -1")
-                vc.play(source, after=lambda e: print(f"[audio] ended: {e}"))
-                print("Joined voice — playing Dust.mp3 🎶")
-
-            while vc.is_connected():
-                if STREAMING and not vc.is_playing():
-                    source = create_stream_source()
-                    await vc.start_stream(source)
-                elif not STREAMING and not vc.is_playing():
-                    source = discord.FFmpegPCMAudio("Dust.mp3", before_options="-stream_loop -1")
-                    vc.play(source)
-                await asyncio.sleep(10)
-
-            print("Voice dropped — rejoining...")
-
-        except discord.errors.ClientException as e:
-            print(f"Voice client error: {e} — retrying in 10s")
-            await asyncio.sleep(10)
-        except Exception as e:
-            print(f"Voice error: {e} — retrying in 10s")
-            await asyncio.sleep(10)
+        await asyncio.sleep(3)
 
 @client.event
 async def on_ready():
@@ -409,7 +402,7 @@ async def on_ready():
     print(f"Warning pings:  {'ON' if SEND_MESSAGES else 'OFF'}")
     print(f"Periodic spam:  {'ON' if SEND_PERIODIC else 'OFF'}")
     print(f"Bot command:    {'ON — slash interaction' if BOT_COMMAND_ENABLED else 'OFF — plain text'}")
-    print(f"Streaming:      {'ON — WebRTC stream (pixel_sakura.gif + Dust.mp3)' if STREAMING else 'OFF'}")
+    print(f"Streaming:      {'ON — WebRTC stream (d.gif + Hava Nagila Original.mp3 via streamer.js)' if STREAMING else 'OFF'}")
     print(f"Typing loop:    {'ON' if TYPING_ENABLED else 'OFF'}")
     print(f"Adaptive:       ON — tuning every 30s")
     print(f"Rotation:       {len(BOT_COMMAND_OPTION_VALUES)} options")

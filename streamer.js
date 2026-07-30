@@ -52,9 +52,11 @@ client.on("ready", async () => {
         while (true) {
             try {
                 console.log("[streamer] Preparing stream...");
-                const videoStream = await prepareStream(mediaToStream);
+                const prep = await prepareStream(mediaToStream);
+                console.log("[streamer] prepareStream structure:", typeof prep, prep ? Object.keys(prep) : prep);
+                const streamInput = (prep && prep.stream) ? prep.stream : prep;
                 console.log("[streamer] Playing stream...");
-                await playStream(videoStream, streamer);
+                await playStream(streamInput, streamer);
                 console.log("[streamer] Stream loop completed. Restarting stream...");
             } catch (err) {
                 console.error("[streamer] Error playing stream:", err);

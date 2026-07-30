@@ -26,7 +26,7 @@ function ensureCombinedMedia() {
             execSync(
                 `ffmpeg -y -ignore_loop 0 -i "${GIF_PATH}" -i "${AUDIO_PATH}" ` +
                 `-map 0:v:0 -map 1:a:0 ` +
-                `-vf "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p" ` +
+                `-vf "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p" ` +
                 `-r 30 -c:v libx264 -preset superfast -tune zerolatency ` +
                 `-bf 0 -g 30 -keyint_min 30 ` +
                 `-c:a libopus -ar 48000 -ac 2 -b:a 128k ` +
@@ -66,12 +66,13 @@ client.on("ready", async () => {
         console.log("[streamer] Starting continuous video + audio stream...");
         while (true) {
             try {
-                // Use noTranscoding: true because our file is already
-                // pre-encoded with the exact specs Discord needs:
-                // H264 (no B-frames, keyframe every 1s) + Opus 48kHz
-                // This avoids the encoding delay that kills the demuxer
                 const { command, output } = prepareStream(mediaToStream, {
-                    noTranscoding: true,
+                    width: 640,
+                    height: 360,
+                    frameRate: 30,
+                    bitrateVideo: 800,
+                    bitrateVideoMax: 1200,
+                    noTranscoding: false,
                 });
                 command.on("error", (err) => {
                     if (err.message && !err.message.includes("Output stream closed")) {

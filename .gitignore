@@ -1,5 +1,5 @@
-node_modules/
-__pycache__/
 stream_media.mp4
+stream_media.mkv
+stream_media.webm
+node_modules/
 .env
-*.pyc

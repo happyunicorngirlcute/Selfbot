@@ -2,8 +2,9 @@ const WebSocket = require("ws");
 global.WebSocket = WebSocket;
 
 const { Client } = require("discord.js-selfbot-v13");
-const { Streamer, prepareStream, playStream } = require("@dank074/discord-video-stream");
-const { execSync } = require("child_process");
+const { Streamer, playStream } = require("@dank074/discord-video-stream");
+const { spawn, execSync } = require("child_process");
+const { PassThrough } = require("stream");
 const fs = require("fs");
 const path = require("path");
 
@@ -27,7 +28,7 @@ function ensureCombinedMedia() {
                 `-movflags +faststart -shortest "${COMBINED_PATH}"`,
                 { stdio: "inherit" }
             );
-            console.log("[streamer] Combined H264 media created successfully!");
+            console.log("[streamer] Combined media created successfully!");
         } catch (e) {
             console.error("[streamer] Failed to combine media with ffmpeg:", e);
         }
@@ -57,33 +58,54 @@ client.on("ready", async () => {
         await new Promise((resolve) => setTimeout(resolve, 3000));
         console.log("[streamer] Voice connection ready.");
 
-        console.log("[streamer] Starting continuous H264 video stream...");
+        console.log("[streamer] Starting continuous H264 video + Opus audio stream...");
         while (true) {
+            let ffmpegProc = null;
             try {
-                const { command, output } = prepareStream(mediaToStream, {
-                    width: 640,
-                    height: 360,
-                    frameRate: 30,
-                    bitrateVideo: 800,
-                    bitrateVideoMax: 1200,
-                    videoCodec: "H264",
-                    includeAudio: false,
-                    noTranscoding: false,
-                });
+                const streamPipe = new PassThrough();
+                
+                ffmpegProc = spawn("ffmpeg", [
+                    "-re",
+                    "-i", mediaToStream,
+                    "-map", "0:v:0",
+                    "-map", "0:a:0",
+                    "-c:v", "libx264",
+                    "-preset", "ultrafast",
+                    "-tune", "zerolatency",
+                    "-vf", "scale=640:360:force_original_aspect_ratio=decrease,pad=640:360:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+                    "-r", "30",
+                    "-g", "30",
+                    "-bf", "0",
+                    "-c:a", "libopus",
+                    "-ar", "48000",
+                    "-ac", "2",
+                    "-b:a", "128k",
+                    "-f", "nut",
+                    "pipe:1"
+                ]);
 
-                command.on("error", (err) => {
-                    if (err.message && !err.message.includes("Output stream closed")) {
-                        console.error("[streamer] FFmpeg error:", err.message);
+                ffmpegProc.stdout.pipe(streamPipe);
+
+                ffmpegProc.stderr.on("data", (data) => {
+                    const msg = data.toString();
+                    if (msg.includes("Error") || msg.includes("error") || msg.includes("Fatal")) {
+                        console.log("[ffmpeg-stderr]", msg.trim());
                     }
                 });
 
+                // Pre-buffer 1500ms of encoded frames so node-av demuxer never starves
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+
                 console.log("[streamer] Playing stream...");
-                await playStream(output, streamer);
-                console.log("[streamer] Stream loop completed. Restarting...");
+                await playStream(streamPipe, streamer);
+                console.log("[streamer] Stream completed. Looping...");
                 await new Promise((resolve) => setTimeout(resolve, 1000));
             } catch (err) {
-                console.error("[streamer] Error playing stream:", err?.message || err);
-                await new Promise((resolve) => setTimeout(resolve, 5000));
+                console.error("[streamer] Stream playback error:", err?.message || err);
+                if (ffmpegProc) {
+                    try { ffmpegProc.kill("SIGKILL"); } catch {}
+                }
+                await new Promise((resolve) => setTimeout(resolve, 3000));
             }
         }
     } catch (err) {

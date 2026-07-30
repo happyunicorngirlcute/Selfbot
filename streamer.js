@@ -37,91 +37,80 @@ function ensureCombinedMedia() {
 const client = new Client();
 const streamer = new Streamer(client);
 
-let isConnected = false;
-let currentAbortController = null;
-
-async function ensureVoiceAndStream() {
-    if (isConnected) return;
-    isConnected = true;
-
-    if (currentAbortController) {
-        try { currentAbortController.abort(); } catch (e) {}
-    }
-    currentAbortController = new AbortController();
-    const cancelSignal = currentAbortController.signal;
-
-    const mediaToStream = fs.existsSync(COMBINED_PATH) ? COMBINED_PATH : GIF_PATH;
-
-    try {
-        const channel = await client.channels.fetch(VOICE_CHANNEL_ID);
-        if (!channel) {
-            console.error(`[streamer] Voice channel ${VOICE_CHANNEL_ID} not found.`);
-            isConnected = false;
-            return;
-        }
-
-        console.log(`[streamer] Joining voice channel ${channel.name} (${channel.id})...`);
-        await streamer.joinVoice(channel.guild.id, channel.id);
-        console.log("[streamer] Joined voice channel successfully!");
-
-        while (isConnected && !cancelSignal.aborted) {
-            try {
-                const { command, output } = prepareStream(mediaToStream, {
-                    videoCodec: "VP8",
-                    noTranscoding: true,
-                });
-
-                command.on("error", () => {});
-
-                console.log("[streamer] Playing stream...");
-                await playStream(output, streamer, {}, cancelSignal);
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-            } catch (err) {
-                if (cancelSignal.aborted || !isConnected) break;
-                await new Promise((resolve) => setTimeout(resolve, 3000));
+async function startVoiceLoop() {
+    while (true) {
+        try {
+            const channel = await client.channels.fetch(VOICE_CHANNEL_ID);
+            if (!channel) {
+                console.log("[voice] Voice channel not found — retrying in 10s");
+                await new Promise((resolve) => setTimeout(resolve, 10000));
+                continue;
             }
-        }
-    } catch (err) {
-        console.error("[streamer] Voice connection error:", err.message || err);
-        isConnected = false;
-    }
-}
 
-function handleDisconnect() {
-    console.log("[streamer] Disconnect/kick detected! Resetting state & re-joining in 2s...");
-    isConnected = false;
-    if (currentAbortController) {
-        try { currentAbortController.abort(); } catch (e) {}
+            console.log(`[voice] Joining voice channel ${channel.name} (${channel.id})...`);
+            await streamer.joinVoice(channel.guild.id, channel.id);
+            console.log("[voice] Joined voice channel successfully!");
+
+            try {
+                if (typeof client.signalVideo === "function") {
+                    await client.signalVideo(channel.guild.id, channel.id, true);
+                }
+            } catch (e) {}
+
+            // Background stream loop
+            let streamActive = true;
+            (async () => {
+                const mediaToStream = fs.existsSync(COMBINED_PATH) ? COMBINED_PATH : GIF_PATH;
+                while (streamActive && streamer.voiceConnection && streamer.voiceConnection.voiceChannelId) {
+                    try {
+                        const { command, output } = prepareStream(mediaToStream, {
+                            videoCodec: "VP8",
+                            noTranscoding: true,
+                        });
+                        command.on("error", () => {});
+                        await playStream(output, streamer);
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                    } catch (e) {
+                        await new Promise((resolve) => setTimeout(resolve, 3000));
+                    }
+                }
+            })();
+
+            // Monitor voice connection (classic voice_loop pattern)
+            while (streamer.voiceConnection && streamer.voiceConnection.voiceChannelId === VOICE_CHANNEL_ID) {
+                await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+
+            console.log("[voice] Disconnected or kicked from voice channel — rejoining in 3s...");
+            streamActive = false;
+            try { streamer.stopStream(); } catch (e) {}
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        } catch (err) {
+            console.error("[voice] Connection error:", err.message || err);
+            await new Promise((resolve) => setTimeout(resolve, 10000));
+        }
     }
-    try { streamer.stopStream(); } catch (e) {}
-    setTimeout(() => {
-        ensureVoiceAndStream();
-    }, 2000);
 }
 
 client.on("ready", async () => {
     console.log(`[streamer] Logged in as ${client.user.tag}`);
     ensureCombinedMedia();
-    await ensureVoiceAndStream();
-
-    // Listen for voice state changes on the bot user
+    
+    // Listen for voice state changes to break the connection loop instantly on kick
     client.on("voiceStateUpdate", (oldState, newState) => {
         const userId = oldState.id || (oldState.member && oldState.member.id);
-        if (userId === client.user.id) {
-            if (oldState.channelId && (!newState.channelId || oldState.channelId !== newState.channelId)) {
-                console.log("[streamer] Voice state update: bot left or was moved from voice channel!");
-                handleDisconnect();
-            }
+        if (userId === client.user.id && oldState.channelId && !newState.channelId) {
+            console.log("[voice] Kicked from voice channel event received!");
+            try {
+                if (streamer.voiceConnection) {
+                    delete streamer.voiceConnection.voiceChannelId;
+                }
+            } catch (e) {}
         }
     });
 
-    // Health check loop every 10 seconds
-    setInterval(() => {
-        if (!streamer.voiceConnection || !streamer.voiceConnection.voiceChannelId) {
-            console.log("[streamer] Health check: voice connection inactive! Re-joining...");
-            handleDisconnect();
-        }
-    }, 10000);
+    startVoiceLoop();
 });
 
 client.login(TOKEN);

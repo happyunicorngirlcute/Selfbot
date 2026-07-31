@@ -14,7 +14,7 @@ REACT_TO_SELF       = False
 SEND_MESSAGES       = False
 SEND_PERIODIC       = False
 REACT_TO_MESSAGES   = False
-STREAMING           = True
+STREAMING           = False
 TYPING_ENABLED      = False
 BOT_COMMAND_ENABLED = False
 
